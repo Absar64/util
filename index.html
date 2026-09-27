@@ -268,6 +268,27 @@
   .lcdmini .opts { color: var(--warn); }
   .lcdmini i { color: #2d4030; font-style: normal; }
 
+  /* ---- picking what he says on waking ---- */
+  .pick { display: flex; gap: 8px; }
+  .pick button { flex: 1 1 0; padding: 10px 8px; border-radius: 10px;
+                 border: 1px solid var(--edge); background: #0f130f;
+                 color: var(--ink-dim); cursor: pointer; font-family: inherit;
+                 font-size: 11px; letter-spacing: .07em; text-transform: uppercase; }
+  .pick button.on { border-color: var(--lcd-on); color: var(--lcd-on);
+                    background: #101c12; }
+
+  .lesson { display: flex; gap: 9px; align-items: center; padding: 8px 10px;
+            border-radius: 8px; background: #0f130f;
+            border-left: 3px solid var(--edge); }
+  .lesson + .lesson { margin-top: 4px; }
+  .lesson.now { border-left-color: var(--lcd-on); }
+  .lesson.done { opacity: .5; }
+  .lesson .t { flex: 1 1 auto; min-width: 0; font-size: 12px; }
+  .lesson .n { flex: none; font-size: 10px; color: var(--ink-dim); }
+  .lesson .x { flex: none; background: none; border: none; cursor: pointer;
+               color: var(--ink-dim); font-size: 13px; padding: 0 2px; }
+  .lesson .x:hover { color: var(--bad); }
+
   /* ---- what is coming next ---- */
   .qitem { border: 1px solid var(--edge); border-radius: 9px; padding: 9px 11px;
            background: #0f130f; }
@@ -391,6 +412,7 @@
       <div class="barrow">
         <span class="sect grow">Coming up</span>
         <span class="tiny" id="qCount"></span>
+        <button id="btnClearQueue" class="tiny danger">Clear queue</button>
       </div>
       <div id="queueList"></div>
       <p class="note">
@@ -399,6 +421,25 @@
         nothing else is queued, and a freshly written one appears here the
         moment it is ready rather than only once you hear it.
       </p>
+      <p class="note">
+        Removing one clears his waiting slot and sends the rest again, so
+        what you see here and what he is actually holding stay in step. He
+        only ever holds one at a time.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">What he says when he wakes</span>
+      <div class="pick" style="margin-top:10px">
+        <button id="wakeAi">Something he writes</button>
+        <button id="wakeOwn">One of my scripts</button>
+      </div>
+      <div class="barrow" id="wakeOwnRow" style="margin-top:10px">
+        <span class="sect" style="min-width:52px">Script</span>
+        <select id="selCustomDefault2" class="grow"
+                aria-label="Script to play on waking"></select>
+      </div>
+      <p class="note" id="wakeNote"></p>
     </div>
   </section>
 
@@ -718,6 +759,28 @@
         Off: he makes ordinary conversation on an empty evening instead.
         Turning off <em>his other side</em> on the Brain tab also stops the
         questions - the sweet one does not interrogate people.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Find out about</span>
+      <div class="list" id="lessonList" style="margin-top:8px"></div>
+      <div class="barrow" style="border-top:1px solid var(--edge); padding-top:10px">
+        <input id="newLesson" class="grow" maxlength="60"
+               placeholder="e.g. pets, their family, how they sleep"
+               aria-label="Something to find out about">
+        <button id="btnAddLesson">Add</button>
+      </div>
+      <p class="note">
+        He works down this list in order and stays on one subject until he
+        has the whole picture - not just that they have a pet, but how many,
+        what kind and what it is called. He decides when he is finished, and
+        gives up after eight answers either way so one subject cannot hold
+        up the rest.
+      </p>
+      <p class="note">
+        With the list empty he finds his own things to ask about, avoiding
+        whatever he already knows.
       </p>
     </div>
 
@@ -2220,6 +2283,128 @@
     toast("Forgotten");
   });
 
+  /* ---- what he says on waking ----
+   *
+   * The same two settings as the Brain tab, said plainly and put where you
+   * are already looking at what he is about to say.
+   */
+  function showWakeSource() {
+    var ai = relayCfg.aiDefault !== false;
+    $("wakeAi").classList.toggle("on", ai);
+    $("wakeOwn").classList.toggle("on", !ai);
+    $("wakeOwnRow").style.display = ai ? "none" : "";
+    $("wakeNote").textContent = ai
+      ? "He writes something new each time he goes quiet - working through " +
+        "the things to talk about, then the things to find out."
+      : "He plays the same script every time until you change it here.";
+
+    var sel = $("selCustomDefault2");
+    sel.textContent = "";
+    lib.scripts.forEach(function (sc) {
+      var o = document.createElement("option");
+      o.value = sc.id;
+      o.textContent = sc.name || "(unnamed)";
+      sel.appendChild(o);
+    });
+    sel.value = relayCfg.customDefaultId || "";
+  }
+
+  function pushOwnScript() {
+    var sc = null;
+    for (var i = 0; i < lib.scripts.length; i++) {
+      if (lib.scripts[i].id === relayCfg.customDefaultId) sc = lib.scripts[i];
+    }
+    if (sc) pub(T.def, wire(sc), true);
+    return sc;
+  }
+
+  $("wakeAi").addEventListener("click", function () {
+    relayCfg.aiDefault = true;
+    pushConfig(); showWakeSource(); renderCustomDefaults();
+    $("cbAiDefault").checked = true;
+    toast("He will write his own");
+  });
+
+  $("wakeOwn").addEventListener("click", function () {
+    relayCfg.aiDefault = false;
+    if (!relayCfg.customDefaultId && lib.scripts.length) {
+      relayCfg.customDefaultId = lib.scripts[0].id;
+    }
+    pushConfig(); showWakeSource(); renderCustomDefaults();
+    $("cbAiDefault").checked = false;
+    var sc = pushOwnScript();
+    toast(sc ? ("He will play " + sc.name) : "Pick a script");
+  });
+
+  $("selCustomDefault2").addEventListener("change", function () {
+    relayCfg.customDefaultId = $("selCustomDefault2").value || null;
+    pushConfig();
+    var sc = pushOwnScript();
+    if (sc) toast("He will play " + sc.name);
+  });
+
+  /* ---- the list of things to find out ---- */
+  function renderLessons() {
+    var host = $("lessonList");
+    host.textContent = "";
+    var items = relayCfg.curriculum || [];
+    if (!items.length) {
+      var p = document.createElement("p");
+      p.className = "note";
+      p.textContent = "Nothing set. He picks his own subjects.";
+      host.appendChild(p);
+      return;
+    }
+    var firstOpen = true;
+    items.forEach(function (it, i) {
+      var row = document.createElement("div");
+      var current = !it.done && firstOpen;
+      if (current) firstOpen = false;
+      row.className = "lesson" + (it.done ? " done" : (current ? " now" : ""));
+
+      var t = document.createElement("span");
+      t.className = "t";
+      t.textContent = it.text;
+      var n = document.createElement("span");
+      n.className = "n";
+      var learned = (profileSeen && profileSeen.facts || []).filter(
+        function (f) { return f.item === it.id; }).length;
+      n.textContent = it.done ? "done"
+                              : (current ? learned + " so far \u00b7 asking now"
+                                         : "waiting");
+      var x = document.createElement("button");
+      x.className = "x";
+      x.textContent = "\u2715";
+      x.title = "Remove";
+      x.addEventListener("click", function () {
+        relayCfg.curriculum = relayCfg.curriculum.filter(function (o) {
+          return o.id !== it.id;
+        });
+        pushConfig(); renderLessons();
+      });
+      row.appendChild(t); row.appendChild(n); row.appendChild(x);
+      host.appendChild(row);
+    });
+  }
+
+  function addLesson() {
+    var text = $("newLesson").value.trim();
+    if (!text) return;
+    relayCfg.curriculum = relayCfg.curriculum || [];
+    relayCfg.curriculum.push({
+      id: "L" + Math.random().toString(36).slice(2, 8),
+      text: text.slice(0, 60), done: false
+    });
+    $("newLesson").value = "";
+    pushConfig(); renderLessons();
+    toast("Added");
+  }
+
+  $("btnAddLesson").addEventListener("click", addLesson);
+  $("newLesson").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") addLesson();
+  });
+
   $("cbInterview").addEventListener("change", function () {
     relayCfg.interview = $("cbInterview").checked;
     pushConfig();
@@ -2666,6 +2851,11 @@
    * standing script he falls back to on waking. Showing the dialogue here
    * means a freshly written one can be read before he ever says it.
    */
+  $("btnClearQueue").addEventListener("click", function () {
+    pub(T.cmd, { op: "unqueue", all: true });
+    toast("Queue cleared");
+  });
+
   var QUEUE_TAG = {
     now: "playing now", queued: "queued", notify: "notification",
     "default": "on waking"
@@ -2721,6 +2911,23 @@
       tag.textContent = QUEUE_TAG[it.kind] || it.kind ||
         (it.when === "on waking" ? "on waking" : "waiting");
       hd.appendChild(pos); hd.appendChild(nm); hd.appendChild(tag);
+
+      /* The standing script is not queued - it is what he falls back to -
+         so there is nothing to remove. Change it above instead. */
+      if (it.kind !== "default") {
+        var x = document.createElement("button");
+        x.className = "x";
+        x.style.cssText = "background:none;border:none;cursor:pointer;" +
+          "color:var(--ink-dim);font-size:13px;padding:0 2px";
+        x.textContent = "\u2715";
+        x.title = "Take this out of the queue";
+        x.addEventListener("click", function () {
+          pub(T.cmd, { op: "unqueue", name: it.name });
+          box.style.opacity = ".3";
+          toast("Removed");
+        });
+        hd.appendChild(x);
+      }
       box.appendChild(hd);
 
       if (it.screens && it.screens.length) {
@@ -2864,7 +3071,7 @@
     aiDefault: true, customDefaultId: null, mentionTracking: true,
     provider: "gemini", model: "", temperature: 1.0, regenerateOnRest: true,
     parameters: [], topics: [],
-    careEnabled: true, scaryEnabled: true, interview: true,
+    careEnabled: true, scaryEnabled: true, interview: true, curriculum: [],
     discordOnWake: false, wakeMessage: "He was woken up!",
     minRegenMinutes: 3, rules: []
   };
@@ -3217,6 +3424,8 @@
     $("wakeMessage").value = relayCfg.wakeMessage || "He was woken up!";
     $("cbScary").checked = relayCfg.scaryEnabled !== false;
     $("cbInterview").checked = relayCfg.interview !== false;
+    renderLessons();
+    showWakeSource();
     showScary();
     $("selProvider").value = relayCfg.provider || "gemini";
     $("inModel").value = relayCfg.model || "";
@@ -3501,7 +3710,7 @@
 
     if (topic === T.log) { renderLog(d); return; }
     if (topic === T.queue) { renderQueue(d); return; }
-    if (topic === T.profile) { renderProfile(d); return; }
+    if (topic === T.profile) { renderProfile(d); renderLessons(); return; }
 
     if (topic === T.tracking) {
       window.__hints = d.hints || window.__hints || [];
