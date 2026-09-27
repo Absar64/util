@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Flowey Remote</title>
+<title>Desk pet</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <style>
   :root {
@@ -314,7 +314,7 @@
 <div class="wrap">
 
   <header>
-    <h1>Flowey Remote</h1>
+    <h1>Desk pet</h1>
     <span class="status"><span class="dot" id="dot"></span><span id="statusText">connecting</span></span>
     <a class="tiny" id="linkHome" href="/" style="margin-left:auto">her page</a>
     <a class="tiny" id="linkOut" href="/admin/logout">sign out</a>
@@ -462,7 +462,7 @@
       </div>
       <p class="note">
         How often the screen pulses while something is waiting, and which
-        style it uses. All five show <em>Flowey has something to say</em> with
+        style it uses. All five show <em>it has something to say</em> with
         the backlight off, each with its own chime. Preview plays one on the
         device.
       </p>
@@ -541,7 +541,7 @@
     <div class="card">
       <span class="sect">Looking after him</span>
       <label class="chk"><input type="checkbox" id="cbCare" checked>
-        Flowey needs looking after</label>
+        Needs looking after</label>
       <p class="note">
         Off: no water, no determination, no sunlight, no poison, and the
         Water and Heal buttons disappear from her page. He is just a talking
@@ -643,7 +643,7 @@
     <div class="card">
       <span class="sect">His other side</span>
       <label class="chk"><input type="checkbox" id="cbScary" checked>
-        Let Flowey be unsettling</label>
+        Let it be unsettling</label>
       <p class="note">
         Off: a different flower, not the same one being polite. He is written
         from a separate character with no second layer, nothing you have
@@ -657,7 +657,7 @@
     <div class="card" style="margin-top:16px">
       <span class="sect">The switch</span>
       <label class="chk"><input type="checkbox" id="cbRealOff">
-        Switch really turns Flowey off</label>
+        Switch really turns it off</label>
       <p class="note">
         Off: he plays dead, then comes back insisting you cannot get rid of him.
         On: deep sleep, microamps, nothing running until the switch comes back.
@@ -826,7 +826,7 @@
         <button id="btnAddParam" class="tiny primary">Add</button>
       </div>
       <p class="note">
-        The name is the whole definition: Flowey reads it as plain English and
+        The name is the whole definition: it is read as plain English and
         works out what it means. A parameter that never fires still counts as
         news - "Left from home: has not happened at all today" is something he
         can use.
@@ -2262,7 +2262,7 @@
 
     if (d.online != null) {
       $("onlineDot").className = "dot " + (d.online ? "ok" : "bad");
-      $("onlineText").textContent = d.online ? "Flowey is online" : "Flowey is offline";
+      $("onlineText").textContent = d.online ? "online" : "offline";
     }
   }
 
@@ -3163,7 +3163,7 @@ function askForConnection() {
   var h = document.createElement("div");
   h.style.cssText = "font-size:13px;letter-spacing:.08em;" +
     "text-transform:uppercase;color:#9fb0ae";
-  h.textContent = "Connect to your Flowey";
+  h.textContent = "Connect";
   card.appendChild(h);
 
   var p = document.createElement("p");
