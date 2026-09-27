@@ -1,0 +1,422 @@
+<!doctype html><html lang=en><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Desk pet</title>
+<link rel=icon href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><g fill='%23f2d94a'><circle cx='8' cy='3.4' r='2.6'/><circle cx='8' cy='12.6' r='2.6'/><circle cx='3.4' cy='8' r='2.6'/><circle cx='12.6' cy='8' r='2.6'/></g><circle cx='8' cy='8' r='2.8' fill='%23e07a2a'/></svg>">
+
+<!--
+  The home page, the version that lives on the open internet.
+
+  The one the relay serves talks to the relay over HTTP: it holds a
+  connection open and is fed every change as it happens. That cannot work
+  from a page served over HTTPS, because browsers refuse to let an HTTPS
+  page call a plain HTTP address on a home network - quite rightly.
+
+  So this copy goes the same way the settings page does: straight to the
+  broker over a secure websocket, and it reads exactly what the device is
+  already publishing. It holds no credentials of its own; it reuses the
+  ones stored in this browser, and asks for them if there are none.
+-->
+
+<style>
+ :root{color-scheme:dark;
+   --bg:#0c0f0c; --ink:#9fb0ae; --dim:#4d5a55;
+   --water:#4ab8d9; --heal:#3fd94a; --bad:#d94a3f;
+   --lcd:#7ee787; --lcd-bg:#101a10}
+ *{box-sizing:border-box}
+ html,body{margin:0;padding:0}
+ body{min-height:100dvh;background:var(--bg);color:var(--ink);
+   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+   -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;
+   display:flex;flex-direction:column;align-items:center;justify-content:center;
+   padding:26px 20px calc(26px + env(safe-area-inset-bottom));text-align:center}
+ a{color:inherit}
+ .wrap{width:100%;max-width:380px}
+
+ .screen{background:var(--lcd-bg);border-radius:10px;padding:18px 14px;
+   border:1px solid #1e2e1e;box-shadow:inset 0 0 26px rgba(0,0,0,.55);
+   font-size:clamp(13px,4.4vw,17px);line-height:1.65;letter-spacing:.11em;
+   white-space:pre;overflow:hidden;color:var(--lcd);
+   text-shadow:0 0 9px rgba(126,231,135,.45)}
+ .screen.off{color:#243024;text-shadow:none}
+ .row{display:block;min-height:1.65em}
+
+ .state{margin-top:10px;font-size:11px;color:var(--dim);
+   letter-spacing:.09em;text-transform:uppercase}
+ .dot{display:inline-block;width:7px;height:7px;border-radius:50%;
+   background:var(--dim);margin-right:6px;vertical-align:middle}
+ .dot.on{background:var(--heal);box-shadow:0 0 7px var(--heal)}
+
+ .bars{margin-top:24px;display:none;flex-direction:column;gap:9px}
+ .bars.show{display:flex}
+ .bar{display:flex;align-items:center;gap:10px;font-size:10px;
+   letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
+ .bar .n{width:76px;text-align:left;flex:none}
+ .bar .track{flex:1;height:7px;border-radius:4px;background:#182018;overflow:hidden}
+ .bar .fill{display:block;height:100%;width:0;border-radius:4px;
+   background:var(--heal);transition:width .5s ease,background .5s ease}
+ .bar .pc{width:34px;text-align:right;flex:none;font-variant-numeric:tabular-nums}
+
+ .poison{margin-top:12px;display:none;font-size:12px;color:var(--bad);
+   letter-spacing:.05em}
+ .poison.show{display:block}
+
+ .vol{margin-top:22px;display:flex;align-items:center;gap:11px}
+ .vol .ic{width:20px;height:20px;flex:none;color:var(--dim);
+   cursor:pointer;background:none;border:none;padding:0}
+ input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:7px;
+   border-radius:4px;background:#182018;outline:none}
+ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;
+   height:20px;border-radius:50%;background:var(--ink);
+   border:3px solid var(--bg);cursor:pointer}
+ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;
+   border-radius:50%;background:var(--ink);cursor:pointer}
+ .vol .pc{width:40px;text-align:right;font-size:11px;color:var(--dim);
+   font-variant-numeric:tabular-nums}
+ .vol.muted input[type=range]{opacity:.35}
+ .vol.muted .ic{color:var(--bad)}
+
+ .acts{margin-top:26px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+ .act{font:inherit;color:var(--ink);cursor:pointer;background:#141814;
+   border:1px solid #223022;border-radius:14px;padding:18px 10px 14px;width:150px;
+   display:flex;flex-direction:column;align-items:center;gap:9px;
+   transition:transform .12s ease,border-color .12s ease,background .12s ease}
+ .act:active{transform:scale(.96)}
+ .act svg{width:38px;height:38px}
+ .act .t{font-size:13px;letter-spacing:.1em;text-transform:uppercase}
+ .act.water:hover,.act.water:focus-visible{border-color:var(--water);background:#101c20}
+ .act.heal:hover,.act.heal:focus-visible{border-color:var(--heal);background:#101c12}
+
+ /* The state class goes on <html> and is spelled differently from the panel
+    it reveals - naming both of them the same hid the whole document. */
+ .panel{display:none}
+ .arming .home{display:none}
+ .arming .panel{display:block;animation:rise .3s ease-out}
+ .panel .icon{width:104px;height:104px;margin:0 auto 20px;display:block}
+ .panel h1{font-size:19px;margin:0 0 10px;letter-spacing:.08em;text-transform:uppercase}
+ .panel p{margin:0;font-size:15px;line-height:1.55}
+ .pulse{animation:pulse 1.9s ease-in-out infinite}
+ .cancel{margin-top:30px;font-size:12px;color:var(--dim);background:none;
+   border:none;padding:8px;cursor:pointer;font-family:inherit}
+
+ .admin{position:fixed;top:12px;right:12px;padding:10px;line-height:0;
+   opacity:.3;transition:opacity .15s}
+ .admin:hover,.admin:focus-visible{opacity:.8}
+ .admin svg{width:19px;height:19px}
+
+ #setup{position:fixed;inset:0;z-index:99;display:none;align-items:center;
+   justify-content:center;padding:22px;background:rgba(8,10,8,.94)}
+ #setup.show{display:flex}
+ #setup .card{max-width:340px;width:100%;background:#11150f;
+   border:1px solid #223022;border-radius:14px;padding:22px;text-align:left}
+ #setup label{display:block;font-size:10px;letter-spacing:.09em;
+   text-transform:uppercase;color:var(--dim);margin:13px 0 5px}
+ #setup input{width:100%;padding:10px 11px;border-radius:9px;background:#0c0f0c;
+   color:var(--ink);border:1px solid #223022;font-family:inherit;font-size:13px}
+ #setup button{width:100%;margin-top:14px;padding:11px;border-radius:9px;
+   background:#1b241b;color:var(--ink);border:1px solid #2b3a2b;cursor:pointer;
+   font-family:inherit;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+ #setup .err{font-size:11px;color:var(--bad);min-height:1.2em;margin:11px 0 0}
+
+ @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+ @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+ @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+
+<a class=admin href="index.html" aria-label="Settings" title="Settings">
+ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <circle cx="12" cy="12" r="3"/>
+  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+ </svg>
+</a>
+
+<div class=wrap>
+ <div class=home>
+  <div class="screen off" id=screen aria-live=polite aria-label="What it is saying">
+   <span class=row id=r0>                </span><span class=row id=r1>                </span>
+  </div>
+  <div class=state><span class=dot id=dot></span><span id=stateText>connecting</span></div>
+
+  <div class=bars id=bars>
+   <div class=bar><span class=n>Water</span>
+    <span class=track><i class=fill id=fWater></i></span><span class=pc id=pWater>--</span></div>
+   <div class=bar><span class=n>Spirits</span>
+    <span class=track><i class=fill id=fDet></i></span><span class=pc id=pDet>--</span></div>
+   <div class=bar><span class=n>Sunlight</span>
+    <span class=track><i class=fill id=fSun></i></span><span class=pc id=pSun>--</span></div>
+  </div>
+  <div class=poison id=poison>He is poorly. Healing him will stop it.</div>
+
+  <div class=vol id=vol>
+   <button class=ic id=bMute aria-label="Mute">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+     <path d="M11 5L6 9H2v6h4l5 4z"/>
+     <path id=wave1 d="M15.5 8.5a5 5 0 0 1 0 7"/>
+     <path id=wave2 d="M18.5 5.5a9 9 0 0 1 0 13"/>
+     <path id=cross d="M22 9l-5 6M17 9l5 6" style="display:none"/>
+    </svg>
+   </button>
+   <input type=range id=volSlider min=0 max=100 step=2 value=0 aria-label="Volume">
+   <span class=pc id=volPct>--</span>
+  </div>
+
+  <div class=acts id=acts>
+   <button class="act water" id=bWater>
+    <svg viewBox="0 0 48 48" fill="none" stroke="#4ab8d9" stroke-width="2.5"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+     <path d="M24 5c0 0 12 13.5 12 21.5A12 12 0 0 1 12 26.5C12 18.5 24 5 24 5z"
+       fill="#4ab8d9" fill-opacity=".18"/><path d="M18 27a6 6 0 0 0 6 6"/>
+    </svg><span class=t>Water</span>
+   </button>
+   <button class="act heal" id=bHeal>
+    <svg viewBox="0 0 48 48" fill="none" stroke="#3fd94a" stroke-width="2.5"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+     <circle cx="24" cy="24" r="17" fill="#3fd94a" fill-opacity=".14"/>
+     <path d="M16 24.5l5.5 5.5L32 19"/>
+    </svg><span class=t>Heal</span>
+   </button>
+  </div>
+ </div>
+
+ <div class=panel id=panel>
+  <div id=panelIcon></div>
+  <h1 id=panelTitle></h1>
+  <p id=panelText></p>
+  <button class=cancel id=bCancel>never mind</button>
+ </div>
+</div>
+
+<div id=setup><div class=card>
+ <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase">Connect</div>
+ <p style="font-size:11px;color:#4d5a55;line-height:1.55;margin:9px 0 0">
+  This page ships with no details in it. What you type stays in this browser
+  only.
+ </p>
+ <label for=sHost>Broker host</label><input id=sHost placeholder="xxxx.s1.eu.hivemq.cloud">
+ <label for=sUser>Username</label><input id=sUser>
+ <label for=sPass>Password</label><input id=sPass type=password>
+ <label for=sId>Device id</label><input id=sId placeholder="the bit in floweuy/&lt;id&gt;/lcd">
+ <p class=err id=sErr></p>
+ <button id=sGo>Connect</button>
+</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.3.4/mqtt.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var PAD = "                ";
+  var pad = function (s) { return (String(s || "") + PAD).slice(0, 16); };
+  var root = document.documentElement;
+
+  /* ---- where to connect ---- */
+  var conn = null;
+  try { conn = JSON.parse(localStorage.getItem("floweuy.conn") || "null"); }
+  catch (e) { conn = null; }
+
+  if (!conn || !conn.host || !conn.id) {
+    $("setup").classList.add("show");
+    $("sGo").addEventListener("click", function () {
+      var h = $("sHost").value.trim().replace(/^wss?:\/\//, "").replace(/[:/].*$/, "");
+      if (!h || !$("sUser").value || !$("sPass").value || !$("sId").value.trim()) {
+        $("sErr").textContent = "All four are needed."; return;
+      }
+      try {
+        localStorage.setItem("floweuy.conn", JSON.stringify({
+          host: h, user: $("sUser").value, pass: $("sPass").value,
+          id: $("sId").value.trim()
+        }));
+      } catch (e) {
+        $("sErr").textContent = "This browser will not remember them."; return;
+      }
+      location.reload();
+    });
+    $("sHost").focus();
+    return;
+  }
+
+  var ID = conn.id;
+  var T = {
+    lcd:      "floweuy/" + ID + "/lcd",
+    cmd:      "floweuy/" + ID + "/cmd",
+    arm:      "floweuy/" + ID + "/arm",
+    armed:    "floweuy/" + ID + "/armed",
+    tracking: "floweuy/" + ID + "/tracking"
+  };
+
+  /* Everything the page draws, filled in from whichever topic carries it. */
+  var st = { r0: "", r1: "", lit: false, vol: 0, mute: false,
+             presence: "unknown", online: false, care: true,
+             levels: null, armed: "" };
+
+  var COPY = {
+    water: { title: "Water him",
+             text: "Tap your phone on him to give him a drink.",
+             colour: "var(--water)", icon:
+      '<svg class="icon pulse" viewBox="0 0 48 48" fill="none" stroke="#4ab8d9"' +
+      ' stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M11 20h19v13a5 5 0 0 1-5 5H16a5 5 0 0 1-5-5z" fill="#4ab8d9" fill-opacity=".18"/>' +
+      '<path d="M30 24l7-6v14z" fill="#4ab8d9" fill-opacity=".18"/>' +
+      '<path d="M15 20a5 5 0 0 1 10 0"/><path d="M8 13l4 3"/><path d="M6 20h3"/>' +
+      '<path d="M8 27l4-3"/></svg>' },
+    heal:  { title: "Heal him",
+             text: "Tap your phone on him to make him better.",
+             colour: "var(--heal)", icon:
+      '<svg class="icon pulse" viewBox="0 0 48 48" fill="none" stroke="#3fd94a"' +
+      ' stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="24" cy="24" r="17" fill="#3fd94a" fill-opacity=".14"/>' +
+      '<path d="M16 24.5l5.5 5.5L32 19"/></svg>' },
+    poison:{ title: "Poison him", text: "Tap your phone on him.",
+             colour: "var(--bad)", icon:
+      '<svg class="icon pulse" viewBox="0 0 48 48" fill="none" stroke="#d94a3f"' +
+      ' stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M24 6l19 33H5L24 6z" fill="#d94a3f" fill-opacity=".14"/>' +
+      '<path d="M24 19v9"/><path d="M24 33.5v.5"/></svg>' }
+  };
+
+  var shown = null, settling = false;
+
+  function showArmed(what) {
+    var c = COPY[what];
+    shown = what;
+    if (!c) { root.classList.remove("arming"); return; }
+    $("panelIcon").innerHTML = c.icon;
+    $("panelTitle").textContent = c.title;
+    $("panelTitle").style.color = c.colour;
+    $("panelText").textContent = c.text;
+    root.classList.add("arming");
+  }
+
+  function bar(fill, pc, v) {
+    v = Math.max(0, Math.min(100, v | 0));
+    $(fill).style.width = v + "%";
+    $(fill).style.background =
+      v < 30 ? "var(--bad)" : (v < 60 ? "#d9a03f" : "var(--heal)");
+    $(pc).textContent = v + "%";
+  }
+
+  var dragging = false;
+
+  function paint() {
+    $("r0").textContent = pad(st.r0);
+    $("r1").textContent = pad(st.r1);
+    $("screen").classList.toggle("off", !st.lit || !st.online);
+
+    $("stateText").textContent = !st.online ? "not answering"
+      : (st.presence === "resting" ? "asleep" : "awake");
+    $("dot").classList.toggle("on", !!st.online && st.presence !== "resting");
+
+    $("bars").classList.toggle("show", !!st.levels && st.care);
+    if (st.levels && st.care) {
+      bar("fWater", "pWater", st.levels.water);
+      bar("fDet", "pDet", st.levels.determination);
+      bar("fSun", "pSun", st.levels.sunlight);
+    }
+    $("poison").classList.toggle("show",
+      !!(st.levels && st.care && st.levels.poisoned));
+    $("acts").style.display = st.care ? "" : "none";
+
+    if (!dragging) {
+      $("volSlider").value = st.vol | 0;
+      $("volPct").textContent = (st.vol | 0) + "%";
+    }
+    $("vol").classList.toggle("muted", !!st.mute);
+    $("wave1").style.display = st.mute ? "none" : "";
+    $("wave2").style.display = st.mute ? "none" : "";
+    $("cross").style.display = st.mute ? "" : "none";
+
+    if (!settling && shown !== st.armed) showArmed(st.armed);
+  }
+
+  /* ---- talking to it ---- */
+  var client = mqtt.connect("wss://" + conn.host + ":8884/mqtt", {
+    clientId: "flowey-home-" + Math.random().toString(16).slice(2, 10),
+    username: conn.user, password: conn.pass,
+    keepalive: 30, reconnectPeriod: 3000, connectTimeout: 10000
+  });
+
+  function send(topic, obj) {
+    try { client.publish(topic, JSON.stringify(obj), { qos: 1 }); }
+    catch (e) { /* offline; the next message will carry it */ }
+  }
+
+  function arm(what) {
+    settling = true;
+    showArmed(what);
+    st.armed = what;
+    send(T.arm, { action: what });
+    setTimeout(function () { settling = false; }, 900);
+  }
+
+  $("bWater").addEventListener("click", function () { arm("water"); });
+  $("bHeal").addEventListener("click", function () { arm("heal"); });
+  $("bCancel").addEventListener("click", function () { arm(""); });
+
+  var volTimer = null;
+  $("volSlider").addEventListener("input", function () {
+    dragging = true;
+    var v = parseInt($("volSlider").value, 10);
+    $("volPct").textContent = v + "%";
+    clearTimeout(volTimer);
+    /* One message per gesture rather than one per pixel of travel. */
+    volTimer = setTimeout(function () {
+      send(T.cmd, { op: "vol", v: (v / 100) * 1.25 });
+    }, 120);
+  });
+  ["change", "mouseup", "touchend", "blur"].forEach(function (ev) {
+    $("volSlider").addEventListener(ev, function () {
+      setTimeout(function () { dragging = false; }, 400);
+    });
+  });
+  $("bMute").addEventListener("click", function () {
+    st.mute = !st.mute;
+    paint();
+    send(T.cmd, { op: "mute", on: st.mute });
+  });
+
+  /* He publishes every time his screen changes, so this keeps up with him
+     the same way the settings page does. */
+  var lastHeard = 0;
+
+  client.on("connect", function () {
+    client.subscribe([T.lcd], { qos: 0 });
+    client.subscribe([T.armed, T.tracking], { qos: 1 });
+    $("stateText").textContent = "waiting for him";
+  });
+
+  client.on("message", function (topic, buf) {
+    var d;
+    try { d = JSON.parse(buf.toString()); } catch (e) { return; }
+
+    if (topic === T.lcd) {
+      lastHeard = Date.now();
+      st.r0 = d.r0 || ""; st.r1 = d.r1 || "";
+      st.lit = d.lit === 1 || d.lit === true;
+      st.vol = d.vol | 0; st.mute = !!d.mute;
+      st.presence = d.pres || st.presence;
+      st.online = true;
+    } else if (topic === T.armed) {
+      st.armed = d.armed || "";
+      if (d.care != null) st.care = !!d.care;
+    } else if (topic === T.tracking) {
+      if (d.care) st.levels = d.care;
+    }
+    paint();
+  });
+
+  client.on("reconnect", function () { $("stateText").textContent = "reconnecting"; });
+  client.on("error", function () { $("stateText").textContent = "cannot connect"; });
+
+  /* Nothing from him for a while means he is unplugged or out of range -
+     the broker will not tell us, so it has to be noticed here. */
+  setInterval(function () {
+    var was = st.online;
+    st.online = lastHeard > 0 && (Date.now() - lastHeard) < 90000;
+    if (was !== st.online) paint();
+  }, 5000);
+
+  paint();
+}());
+</script>
+</html>
