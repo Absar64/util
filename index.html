@@ -1,0 +1,3224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flowey Remote</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg:        #0c0f0c;
+    --panel:     #14181a;
+    --panel-2:   #191e20;
+    --edge:      #2a3134;
+    --edge-2:    #3a4347;
+    --ink:       #9fb0ae;
+    --ink-dim:   #66756f;
+    --lcd-on:    #3fd94a;
+    --lcd-glass: #0f2a12;
+    --lcd-dead:  #1a1d1a;
+    --lcd-off:   #111412;
+    --warn:      #d9863f;
+    --bad:       #d94a3f;
+    --good:      #3fd94a;
+  }
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding-block: 24px;
+    padding-inline: 16px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    display: flex;
+    justify-content: center;
+  }
+  .wrap { width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 16px; }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 14px; font-weight: 600; margin: 0; letter-spacing: .14em; text-transform: uppercase; }
+
+  .status { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-dim); flex: none; }
+  .dot.ok   { background: var(--good); box-shadow: 0 0 8px rgba(63,217,74,.7); }
+  .dot.warn { background: var(--warn); }
+  .dot.bad  { background: var(--bad); }
+
+  /* ---- tabs ---- */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--edge); }
+  .tab {
+    appearance: none; border: 0; background: none; cursor: pointer;
+    font: inherit; color: var(--ink-dim);
+    padding: 8px 14px; border-bottom: 2px solid transparent;
+    letter-spacing: .08em; text-transform: uppercase; font-size: 11px;
+  }
+  .tab[aria-selected="true"] { color: var(--lcd-on); border-bottom-color: var(--lcd-on); }
+  .tab:focus-visible { outline: 2px solid var(--lcd-on); outline-offset: -2px; }
+
+  /* ---- screen ---- */
+  .bezel { background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 13px; }
+  .screen {
+    background: var(--lcd-glass); border-radius: 4px; padding: 13px 9px;
+    display: flex; flex-direction: column; gap: 5px;
+    transition: background .18s linear;
+    box-shadow: inset 0 0 26px rgba(0,0,0,.65);
+  }
+  .screen.dark    { background: var(--lcd-dead); }
+  .screen.offline { background: var(--lcd-off); }
+  .row { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; }
+  .cell {
+    font-family: VT323, "IBM Plex Mono", monospace;
+    font-size: clamp(16px, 4.6vw, 27px); line-height: 1.12;
+    text-align: center; color: var(--lcd-on); background: rgba(0,0,0,.22);
+    border-radius: 1px; white-space: pre; text-shadow: 0 0 7px rgba(63,217,74,.5);
+  }
+  .screen.dark .cell, .screen.offline .cell { color: #23301f; text-shadow: none; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 9px; }
+  .stat { border: 1px solid var(--edge); border-radius: 6px; padding: 7px 9px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .stat .k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); }
+  .stat .v { font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+  .dread { display: flex; gap: 3px; margin-top: 3px; }
+  .pip { width: 11px; height: 5px; border-radius: 1px; background: var(--edge); }
+  .pip.on-1 { background: #c9c04a; }
+  .pip.on-2 { background: var(--warn); }
+  .pip.on-3 { background: var(--bad); }
+  .bar { height: 5px; border-radius: 3px; background: var(--edge); overflow: hidden; margin-top: 4px; }
+  .bar > i { display: block; height: 100%; background: var(--ink); width: 0; transition: width .2s linear; }
+
+  /* ---- controls ---- */
+  button, select, input {
+    font: inherit; color: var(--ink);
+    background: var(--panel-2); border: 1px solid var(--edge-2);
+    border-radius: 5px; padding: 6px 9px;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--lcd-on); color: var(--lcd-on); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--lcd-on); outline-offset: 1px; }
+  .primary { background: #17301a; border-color: #2f6a35; color: var(--lcd-on); }
+  .danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
+  .tiny { padding: 3px 7px; font-size: 12px; line-height: 1; }
+
+  .barrow { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+  .grow { flex: 1 1 auto; min-width: 0; }
+
+  .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 9px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .sect { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-dim); }
+
+  /* ---- step editor ---- */
+  .steps { display: flex; flex-direction: column; gap: 9px; }
+  .step { border: 1px solid var(--edge); border-radius: 7px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .step-head { display: flex; align-items: center; gap: 7px; }
+  .step-no { font-size: 11px; color: var(--ink-dim); min-width: 22px; }
+  .lines { display: flex; flex-direction: column; gap: 5px; }
+  .lcdline { display: flex; align-items: center; gap: 7px; }
+  .lcdline input {
+    font-family: VT323, monospace; font-size: 19px; letter-spacing: .06em;
+    flex: 1 1 auto; min-width: 0; color: var(--lcd-on); background: var(--lcd-glass);
+    border-color: #23422a;
+  }
+  .count { font-size: 11px; color: var(--ink-dim); min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+  .count.over { color: var(--bad); }
+
+  .knobs { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .knob { display: flex; align-items: center; gap: 5px; }
+  .knob .k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); }
+  .knob .v { min-width: 62px; text-align: center; font-variant-numeric: tabular-nums; font-size: 12px; }
+
+  .choice { border-top: 1px dashed var(--edge); padding-top: 8px; display: flex; flex-direction: column; gap: 7px; }
+  .choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .choice-grid input, .choice-grid select { width: 100%; }
+  label.chk { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+
+  .list { display: flex; flex-direction: column; gap: 5px; }
+  .listrow { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border: 1px solid var(--edge); border-radius: 6px; }
+  .listrow.sel { border-color: var(--lcd-on); background: #101a12; }
+  .listrow .nm { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; padding: 2px 5px; border-radius: 3px; border: 1px solid var(--edge-2); color: var(--ink-dim); }
+  .tag.def  { border-color: #2f6a35; color: var(--lcd-on); }
+  .tag.haunt{ border-color: #6a2f2f; color: var(--bad); }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    height: 22px; padding: 0; background: none; border: 0;
+    flex: 1 1 120px; min-width: 90px; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 5px; border-radius: 3px; background: var(--edge-2);
+  }
+  input[type=range]::-moz-range-track {
+    height: 5px; border-radius: 3px; background: var(--edge-2);
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 15px; height: 15px; border-radius: 50%; margin-top: -5px;
+    background: var(--lcd-on); border: 0;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%;
+    background: var(--lcd-on); border: 0;
+  }
+  .muted-on { border-color: var(--bad) !important; color: var(--bad) !important; }
+
+  .tile {
+    border: 1px solid var(--edge); border-radius: 8px; padding: 11px 12px;
+    display: flex; flex-direction: column; gap: 2px; min-width: 0;
+    background: linear-gradient(180deg, rgba(63,217,74,.035), transparent);
+  }
+  .tile .big {
+    font-family: VT323, monospace; font-size: 34px; line-height: 1;
+    color: var(--lcd-on); font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 10px rgba(63,217,74,.35);
+  }
+  .tile .lbl { font-size: 11px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile .sub { font-size: 10px; color: var(--ink-dim); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; }
+
+  .spark { display: flex; align-items: flex-end; gap: 2px; height: 26px; margin-top: 6px; }
+  .spark i { flex: 1 1 auto; background: var(--edge-2); border-radius: 1px 1px 0 0; min-height: 2px; }
+  .spark i.today { background: var(--lcd-on); }
+
+  /* ---- the history, and what is coming ---- */
+  .ev { display: flex; gap: 10px; align-items: flex-start; padding: 7px 9px;
+        border-radius: 8px; border: 1px solid transparent;
+        border-left: 3px solid var(--edge); background: #0f130f; }
+  .ev + .ev { margin-top: 4px; }
+  .ev .at { color: var(--ink-dim); font-size: 10px; min-width: 76px; flex: none;
+            font-variant-numeric: tabular-nums; padding-top: 2px; }
+  .ev .ic { width: 17px; height: 17px; flex: none; margin-top: 1px; }
+  .ev .mid { flex: 1 1 auto; min-width: 0; }
+  .ev .ttl { font-size: 12px; }
+  .ev .sub { font-size: 11px; color: var(--ink-dim); margin-top: 2px; }
+  .ev .act { flex: none; font-size: 10px; letter-spacing: .06em;
+             text-transform: uppercase; padding: 3px 8px; border-radius: 20px;
+             border: 1px solid var(--edge); color: var(--ink-dim);
+             white-space: nowrap; align-self: flex-start; }
+
+  /* One colour per kind of thing, used on the left edge, the icon and the
+     chip, so a long history can be skimmed by colour alone. */
+  .ev.k-script  { border-left-color: var(--lcd-on); }
+  .ev.k-choice  { border-left-color: var(--warn); }
+  .ev.k-back    { border-left-color: #6aa9d9; }
+  .ev.k-button  { border-left-color: #b07ad9; }
+  .ev.k-water   { border-left-color: #4ab8d9; }
+  .ev.k-heal    { border-left-color: var(--lcd-on); }
+  .ev.k-poison  { border-left-color: var(--bad); }
+  .ev.k-rest    { border-left-color: #4d5a55; }
+  .ev.k-online  { border-left-color: var(--lcd-on); }
+  .ev.k-offline { border-left-color: var(--bad); }
+  .ev.k-script .ic, .ev.k-heal .ic, .ev.k-online .ic { color: var(--lcd-on); }
+  .ev.k-choice .ic { color: var(--warn); }
+  .ev.k-back .ic { color: #6aa9d9; }
+  .ev.k-button .ic { color: #b07ad9; }
+  .ev.k-water .ic { color: #4ab8d9; }
+  .ev.k-poison .ic, .ev.k-offline .ic { color: var(--bad); }
+  .ev.k-rest .ic { color: #4d5a55; }
+  .ev.k-script .act { color: var(--lcd-on); border-color: #22402a; }
+  .ev.k-poison .act, .ev.k-offline .act { color: var(--bad); border-color: #402222; }
+  .ev.k-choice .act { color: var(--warn); border-color: #403522; }
+
+  /* What was actually on the display, folded away until asked for. */
+  .ev .more { font-size: 10px; color: var(--ink-dim); cursor: pointer;
+              margin-top: 5px; display: inline-block; letter-spacing: .05em;
+              text-transform: uppercase; background: none; border: none;
+              padding: 0; font-family: inherit; }
+  .ev .more:hover { color: var(--ink); }
+  .lcdlist { margin-top: 7px; display: none; flex-direction: column; gap: 3px; }
+  .lcdlist.open { display: flex; }
+  .lcdmini { background: #101a10; border: 1px solid #1e2e1e; border-radius: 5px;
+             padding: 5px 8px; font-size: 11px; line-height: 1.5;
+             letter-spacing: .08em; white-space: pre; color: var(--lcd-on);
+             overflow-x: auto; }
+  .lcdmini .opts { color: var(--warn); }
+  .lcdmini i { color: #2d4030; font-style: normal; }
+
+  /* ---- what is coming next ---- */
+  .qitem { border: 1px solid var(--edge); border-radius: 9px; padding: 9px 11px;
+           background: #0f130f; }
+  .qitem + .qitem { margin-top: 7px; }
+  .qitem.now { border-color: #22402a; }
+  .qhead { display: flex; gap: 9px; align-items: center; }
+  .qhead .nm { flex: 1 1 auto; min-width: 0; font-size: 12px;
+               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qhead .pos { font-size: 10px; color: var(--ink-dim); min-width: 18px;
+                font-variant-numeric: tabular-nums; }
+  .qhead .tag { font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+                padding: 3px 8px; border-radius: 20px; border: 1px solid var(--edge);
+                color: var(--ink-dim); white-space: nowrap; }
+  .qitem.now .tag { color: var(--lcd-on); border-color: #22402a; }
+  .qitem .lcdlist { display: flex; }
+
+  .spin { display: inline-block; width: 11px; height: 11px; border-radius: 50%;
+          border: 2px solid var(--edge); border-top-color: var(--lcd-on);
+          animation: spin .8s linear infinite; vertical-align: -1px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .feed { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+  .feedrow {
+    display: flex; align-items: baseline; gap: 8px; padding: 5px 8px;
+    border-left: 2px solid var(--edge-2); font-size: 12px;
+  }
+  .feedrow.hot { border-left-color: var(--warn); }
+  .feedrow .when { color: var(--ink-dim); font-size: 10px; min-width: 52px; font-variant-numeric: tabular-nums; }
+  .feedrow .what { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .feedrow .n { color: var(--lcd-on); font-variant-numeric: tabular-nums; }
+
+  .rule {
+    border: 1px solid var(--edge); border-radius: 7px; padding: 10px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .rule.off { opacity: .5; }
+  .sentence { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+  .sentence .kw { color: var(--ink-dim); text-transform: uppercase; font-size: 10px; letter-spacing: .1em; }
+  .sentence select, .sentence input { padding: 4px 7px; font-size: 12px; }
+  .sentence input.num { width: 62px; }
+  .mono { font-family: inherit; font-size: 11px; color: var(--lcd-on);
+          background: var(--lcd-glass); border: 1px solid #23422a; border-radius: 4px;
+          padding: 4px 7px; word-break: break-all; }
+
+  .writing {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 11px; color: var(--lcd-on);
+  }
+  .writing i {
+    width: 9px; height: 9px; border-radius: 50%;
+    border: 2px solid var(--lcd-on); border-right-color: transparent;
+    animation: spin 700ms linear infinite; display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .writing i { animation: none; border-right-color: var(--lcd-on); opacity: .5; }
+  }
+
+  .note { font-size: 11px; color: var(--ink-dim); }
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    background: var(--panel-2); border: 1px solid var(--edge-2);
+    border-radius: 6px; padding: 8px 14px; font-size: 12px; z-index: 50;
+  }
+  footer { font-size: 11px; color: var(--ink-dim); word-break: break-all; }
+
+  @media (max-width: 460px) {
+    .choice-grid { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Flowey Remote</h1>
+    <span class="status"><span class="dot" id="dot"></span><span id="statusText">connecting</span></span>
+    <a class="tiny" id="linkHome" href="/" style="margin-left:auto">her page</a>
+    <a class="tiny" id="linkOut" href="/admin/logout">sign out</a>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" id="tabMonitor" role="tab" aria-selected="true" aria-controls="paneMonitor">Monitor</button>
+    <button class="tab" id="tabScripts" role="tab" aria-selected="false" aria-controls="paneScripts">Scripts</button>
+    <button class="tab" id="tabSounds" role="tab" aria-selected="false" aria-controls="paneSounds">Sounds</button>
+    <button class="tab" id="tabTracking" role="tab" aria-selected="false" aria-controls="paneTracking">Tracking</button>
+    <button class="tab" id="tabCare" role="tab" aria-selected="false" aria-controls="paneCare">Care</button>
+    <button class="tab" id="tabLog" role="tab" aria-selected="false" aria-controls="paneLog">Log</button>
+    <button class="tab" id="tabBrain" role="tab" aria-selected="false" aria-controls="paneBrain">Brain</button>
+  </div>
+
+  <!-- ------------------------------------------------------ monitor -->
+  <section id="paneMonitor" role="tabpanel">
+    <div class="bezel">
+      <div class="screen offline" id="screen">
+        <div class="row" id="row0"></div>
+        <div class="row" id="row1"></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><span class="k">Dread</span><span class="v" id="dreadName">--</span><span class="dread" id="dreadPips"></span></div>
+        <div class="stat"><span class="k">Volume</span><span class="v" id="volText">--</span><span class="bar"><i id="volBar"></i></span></div>
+        <div class="stat"><span class="k">Power</span><span class="v" id="pwText">--</span></div>
+        <div class="stat"><span class="k">Playing</span><span class="v" id="scrText">--</span></div>
+        <div class="stat"><span class="k">Step</span><span class="v" id="stepText">--</span></div>
+        <div class="stat"><span class="k">Uptime</span><span class="v" id="upText">--</span></div>
+      </div>
+      <div class="barrow" style="border-top:1px solid var(--edge); padding-top:12px">
+        <span class="sect" style="min-width:52px">Volume</span>
+        <input type="range" id="volSlider" min="0" max="100" step="4" value="100"
+               aria-label="Device volume">
+        <span class="v" id="volPct" style="min-width:42px; text-align:right">--</span>
+        <button id="btnMute" class="tiny">Mute</button>
+      </div>
+      <p class="note" id="lastSeen">No data yet.</p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="barrow">
+        <span class="sect grow">Coming up</span>
+        <span class="tiny" id="qCount"></span>
+      </div>
+      <div id="queueList"></div>
+      <p class="note">
+        Everything waiting for him, in the order he will get to it. The one
+        marked ON WAKING is the standing script - it is what he plays when
+        nothing else is queued, and a freshly written one appears here the
+        moment it is ready rather than only once you hear it.
+      </p>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------ scripts -->
+  <section id="paneScripts" role="tabpanel" hidden>
+    <div class="card">
+      <span class="sect">Your scripts</span>
+      <div class="list" id="scriptList"></div>
+      <div class="barrow">
+        <button id="btnNew">+ New script</button>
+        <button id="btnDup">Duplicate</button>
+        <button id="btnDel" class="danger">Delete</button>
+      </div>
+    </div>
+
+    <div class="card" id="editorCard" style="margin-top:16px">
+      <div class="barrow">
+        <span class="sect grow">Editing</span>
+        <input id="scriptName" class="grow" maxlength="20" placeholder="Script name" aria-label="Script name">
+      </div>
+
+      <div class="steps" id="stepList"></div>
+      <div class="barrow"><button id="btnAddStep">+ Add step</button></div>
+
+      <div class="barrow" style="border-top:1px solid var(--edge); padding-top:12px">
+        <label class="chk"><input type="checkbox" id="chkLoop"> Loop this script</label>
+      </div>
+
+      <div class="barrow">
+        <button id="btnNotify" class="primary">&#9788; Send with notification</button>
+      </div>
+      <div class="barrow">
+        <button id="btnPlay">&#9654; Play now</button>
+        <button id="btnQueue">Queue next</button>
+        <button id="btnStop">Stop</button>
+      </div>
+      <div class="barrow">
+        <button id="btnDefault">Make default</button>
+        <button id="btnHaunt">Use for power-off</button>
+      </div>
+      <p class="note">
+        <strong>Send with notification</strong> leaves it waiting: the screen
+        pulses quietly every few minutes until somebody presses a button to read
+        it. <strong>Play now</strong> interrupts whatever is on screen.
+        <strong>Queue</strong> waits for the current script to end.
+        <strong>Default</strong> is what plays when a button is pressed and
+        nothing is waiting. <strong>Power-off</strong> replaces what he says
+        after the fake shutdown.
+      </p>
+    </div>
+  </section>
+
+  <section id="paneSounds" role="tabpanel" hidden>
+    <div class="card">
+      <span class="sect">Mix</span>
+      <p class="note">
+        How the three sources balance against each other. The volume control
+        on the Monitor tab scales all of them together.
+      </p>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">Music</span>
+        <input type="range" id="lvMusic" min="0" max="100" step="5" value="55" aria-label="Music level">
+        <span class="v" id="lvMusicPct" style="min-width:42px; text-align:right">--</span>
+      </div>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">Sound FX</span>
+        <input type="range" id="lvSfx" min="0" max="100" step="5" value="55" aria-label="Sound effect level">
+        <span class="v" id="lvSfxPct" style="min-width:42px; text-align:right">--</span>
+      </div>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">Text blips</span>
+        <input type="range" id="lvBlip" min="0" max="100" step="5" value="30" aria-label="Text blip level">
+        <span class="v" id="lvBlipPct" style="min-width:42px; text-align:right">--</span>
+      </div>
+      <div class="barrow">
+        <button id="btnLvReset" class="tiny">Reset to defaults</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Notifications</span>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">Repeat</span>
+        <button id="btnNotifyDown" class="tiny">&#9664;</button>
+        <span class="v" id="notifyEvery" style="min-width:76px; text-align:center">--</span>
+        <button id="btnNotifyUp" class="tiny">&#9654;</button>
+        <span class="grow"></span>
+        <button id="btnNotifyClear" class="tiny danger">Clear pending</button>
+      </div>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">Style</span>
+        <div class="list grow" id="styleList"></div>
+      </div>
+      <p class="note">
+        How often the screen pulses while something is waiting, and which
+        style it uses. All five show <em>Flowey has something to say</em> with
+        the backlight off, each with its own chime. Preview plays one on the
+        device.
+      </p>
+      <div class="barrow">
+        <button id="btnLcdFix" class="tiny">Repair screen</button>
+        <span class="note" id="lcdFixNote"></span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Add a sound</span>
+      <div class="barrow">
+        <input id="sfxUrl" class="grow" placeholder="https://.../sound.mp3" aria-label="Sound URL">
+        <button id="btnFetch">Fetch</button>
+      </div>
+      <div class="barrow">
+        <label class="chk" for="sfxFile">or pick a file:</label>
+        <input type="file" id="sfxFile" accept="audio/*" class="grow">
+      </div>
+      <p class="note" id="sfxNote">
+        The browser decodes the audio and sends raw samples to the device, so
+        the ESP32 never has to fetch or decode anything. Four slots, about
+        1.5 seconds each.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Stream a long track</span>
+      <div class="barrow">
+        <input id="strUrl" class="grow" placeholder="http://.../track.mp3" aria-label="Stream URL">
+      </div>
+      <div class="barrow">
+        <label class="chk"><input type="checkbox" id="strLoop"> Loop</label>
+        <span class="grow"></span>
+        <button id="btnStream" class="primary">&#9654; Stream</button>
+        <button id="btnStreamStop">Stop</button>
+      </div>
+      <p class="note" id="strNote">
+        For tracks too long to fit in a slot. The device decodes this itself,
+        so it costs memory while it plays: <strong>http:// works comfortably,
+        https:// needs about 45KB more</strong> and may be declined. Clearing
+        sound slots frees the most.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Slots</span>
+      <div class="list" id="sfxList"></div>
+      <p class="note" id="sfxMem">--</p>
+    </div>
+  </section>
+
+  <section id="paneTracking" role="tabpanel" hidden>
+    <div class="card">
+      <span class="sect">Today</span>
+      <div class="tiles" id="trackTiles"></div>
+      <p class="note" id="trackNote">Waiting for the relay.</p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">What he has been told</span>
+      <div class="feed" id="trackFeed"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Waiting to be mentioned</span>
+      <div class="list" id="trackHints"></div>
+      <p class="note">
+        Facts queued for the next generated script. They are used once and
+        then cleared, so nothing gets repeated back twice.
+      </p>
+    </div>
+  </section>
+
+  <section id="paneCare" role="tabpanel" hidden>
+    <div class="card">
+      <span class="sect">Looking after him</span>
+      <label class="chk"><input type="checkbox" id="cbCare" checked>
+        Flowey needs looking after</label>
+      <p class="note">
+        Off: no water, no determination, no sunlight, no poison, and the
+        Water and Heal buttons disappear from her page. He is just a talking
+        flower. The bars stop moving but keep their values, so turning it
+        back on picks up where it left off rather than starting him dry.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">How he is doing</span>
+      <div class="barrow"><span class="sect" style="min-width:96px">Water</span>
+        <span class="bar grow"><i id="barWater"></i></span>
+        <span class="v" id="valWater" style="min-width:42px;text-align:right">--</span></div>
+      <div class="barrow"><span class="sect" style="min-width:96px">Determination</span>
+        <span class="bar grow"><i id="barDet"></i></span>
+        <span class="v" id="valDet" style="min-width:42px;text-align:right">--</span></div>
+      <div class="barrow"><span class="sect" style="min-width:96px">Sunlight</span>
+        <span class="bar grow"><i id="barSun"></i></span>
+        <span class="v" id="valSun" style="min-width:42px;text-align:right">--</span></div>
+      <p class="note" id="careNote">
+        Water empties over a day, determination over a day unless someone pays
+        attention to him, sunlight over three days unless he is woken between
+        7 and 10 in the morning. Below 30% each one starts showing in what he
+        writes.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Treat him</span>
+      <div class="barrow">
+        <a id="linkWater" class="tiny" style="text-decoration:none">Give water</a>
+        <a id="linkHeal" class="tiny" style="text-decoration:none">Heal</a>
+        <span class="grow"></span>
+        <a id="linkPoison" class="tiny danger" style="text-decoration:none">Poison</a>
+      </div>
+      <p class="note">
+        These open a page on the relay, so they work from a bookmark or a
+        home screen shortcut. Poisoning makes him play a sound every few
+        minutes until someone heals him.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">The tag</span>
+      <div class="barrow">
+        <span class="sect grow" id="armState">nothing chosen</span>
+        <button class="tiny" id="armWater">arm water</button>
+        <button class="tiny" id="armHeal">arm heal</button>
+        <button class="tiny danger" id="armPoison">arm poison</button>
+        <button class="tiny" id="armNone">clear</button>
+      </div>
+      <p class="note">
+        There is one tag in the pot and it always points at the same address.
+        What it does is whatever was chosen a moment before, on her page or
+        here - so choosing Water and then touching him is what waters him.
+        An arming expires after 10 minutes and a tap uses it up, so a tag
+        nobody chose anything for does nothing at all.
+      </p>
+      <p class="note">
+        Write this to the tag, once, and never again:
+        <code id="tagUrl">http://&lt;relay&gt;:8080/redirect</code>
+      </p>
+      <div class="barrow">
+        <span class="sect" style="min-width:96px">Poison sound</span>
+        <select id="poisonSfx" aria-label="Poison sound slot">
+          <option value="0">slot 1</option><option value="1">slot 2</option>
+          <option value="2">slot 3</option><option value="3">slot 4</option>
+        </select>
+        <span class="sect">every</span>
+        <input id="poisonEvery" type="number" min="1" max="120"
+               style="width:64px" aria-label="Poison interval minutes">
+        <span class="sect">min</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Buttons</span>
+      <div class="list" id="btnRoutineList"></div>
+      <p class="note">
+        What each press does when he is <em>not</em> asking a question -
+        during a question the buttons are the answer and nothing else. The
+        label appears on his screen for a moment, so a press that fires a
+        webhook does not look identical to one that did nothing.
+      </p>
+    </div>
+  </section>
+
+  <section id="paneLog" role="tabpanel" hidden>
+    <div class="card">
+      <div class="barrow">
+        <span class="sect grow">Everything that has happened</span>
+        <span class="status"><span class="dot" id="onlineDot"></span><span id="onlineText">--</span></span>
+      </div>
+      <div class="feed" id="logFeed" style="max-height:520px"></div>
+    </div>
+  </section>
+
+  <section id="paneBrain" role="tabpanel" hidden>
+    <div class="card">
+      <span class="sect">His other side</span>
+      <label class="chk"><input type="checkbox" id="cbScary" checked>
+        Let Flowey be unsettling</label>
+      <p class="note">
+        Off: a different flower, not the same one being polite. He is written
+        from a separate character with no second layer, nothing you have
+        tracked is put in front of the model at all, and every line plays at
+        dread 0 so the music never warps. Safe to leave running in front of
+        anyone.
+      </p>
+      <p class="note" id="scaryNote"></p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">The switch</span>
+      <label class="chk"><input type="checkbox" id="cbRealOff">
+        Switch really turns Flowey off</label>
+      <p class="note">
+        Off: he plays dead, then comes back insisting you cannot get rid of him.
+        On: deep sleep, microamps, nothing running until the switch comes back.
+        Pending notifications survive either way.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Default dialogue</span>
+      <label class="chk"><input type="checkbox" id="cbAiDefault" checked>
+        Write new dialogue automatically</label>
+      <p class="note">
+        A fresh script is generated each time he goes to rest, so he never
+        repeats himself. Turn this off to loop one of your own scripts instead.
+      </p>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">Instead</span>
+        <select id="selCustomDefault" class="grow" aria-label="Script to use instead"></select>
+      </div>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">Writer</span>
+        <select id="selProvider" class="grow" aria-label="Model provider">
+          <option value="gemini">Google Gemini - free tier, no card</option>
+          <option value="ollama">Ollama - on your machine, private</option>
+          <option value="groq">Groq - free tier, very fast</option>
+          <option value="openrouter">OpenRouter - free models</option>
+        </select>
+      </div>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">Model</span>
+        <input id="inModel" class="grow" placeholder="leave blank for the default"
+               aria-label="Model name">
+        <button id="btnGenNow" class="tiny">Write one now</button>
+      </div>
+      <p class="note" id="providerNote"></p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Firmware</span>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">Running</span>
+        <span class="v grow" id="fwVersion">--</span>
+        <button id="btnUpdate" class="tiny primary">Update?</button>
+      </div>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">From</span>
+        <input id="updateUrl" class="grow" placeholder="https://your-tunnel"
+               aria-label="Update server address">
+      </div>
+      <p class="note" id="otaNote">
+        Checks only when you press it. The new image goes into the spare
+        partition and is only switched to once it verifies, so a failed
+        download leaves the working firmware untouched.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Sleep</span>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">Idle after</span>
+        <button id="btnIdleDown" class="tiny">&#9664;</button>
+        <span class="v" id="idleVal" style="min-width:70px; text-align:center">--</span>
+        <button id="btnIdleUp" class="tiny">&#9654;</button>
+      </div>
+      <p class="note">
+        Nothing happening for this long and he goes quiet where he stands -
+        screen off, music off, still connected. Waking picks up the same line.
+        Zero turns it off entirely.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Pace</span>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">Typing</span>
+        <input type="range" id="paceType" min="30" max="200" step="10" value="100"
+               aria-label="Typing speed">
+        <span class="v" id="paceTypeVal" style="min-width:56px; text-align:right">--</span>
+      </div>
+      <div class="barrow">
+        <span class="sect" style="min-width:74px">Pause</span>
+        <input type="range" id="paceHold" min="30" max="200" step="10" value="100"
+               aria-label="Pause between screens">
+        <span class="v" id="paceHoldVal" style="min-width:56px; text-align:right">--</span>
+      </div>
+      <p class="note">
+        Typing is how fast letters appear; pause is how long a screen stays up
+        before the next one. Both are multipliers, so the menacing lines stay
+        quicker than the friendly ones whatever you pick.
+      </p>
+      <div class="barrow"><button id="btnPaceReset" class="tiny">Reset to normal</button></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="barrow">
+        <span class="sect grow">Things to talk about</span>
+        <span class="writing" id="writingNow" hidden><i></i>writing a script...</span>
+      </div>
+      <div class="list" id="topicList"></div>
+      <div class="barrow" style="border-top:1px solid var(--edge); padding-top:10px">
+        <input id="newTopic" class="grow" maxlength="90"
+               placeholder="e.g. ask how the job application went"
+               aria-label="Topic">
+        <select id="newTopicScope" aria-label="Repeat">
+          <option value="today">today</option>
+          <option value="week">this week</option>
+        </select>
+        <label class="chk"><input type="checkbox" id="newTopicAsk"> ask a question</label>
+        <button id="btnAddTopic" class="tiny primary">Add</button>
+      </div>
+      <p class="note" id="topicNote">
+        Leave this empty and he just talks. Add something and the next script
+        is about it, then it ticks off. Ten is the maximum - past that he is
+        reading a list, not having a conversation.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Tracking</span>
+      <label class="chk"><input type="checkbox" id="cbMention" checked>
+        Let him mention what he knows</label>
+      <p class="note">
+        Unticked, the tracking keeps running and the rules keep firing - he
+        just never brings any of it up. Scripts fall back to ambient
+        observations instead.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Address your phone uses</span>
+      <div class="barrow">
+        <input id="publicBase" class="grow" placeholder="http://192.168.0.10:8080"
+               aria-label="Address your phone uses">
+        <button id="btnBaseNow" class="tiny">Use this one</button>
+      </div>
+      <p class="note" id="baseNote"></p>
+      <p class="note">
+        Every address on this page is built from this, so change it here and
+        the shortcut URLs, the care links and the tag address all follow.
+        A 192.168.x.x address only works on your home WiFi - shortcuts will
+        fail on mobile data until this points at something reachable from
+        outside.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">What he tracks</span>
+      <div class="list" id="paramList"></div>
+      <div class="barrow" style="border-top:1px solid var(--edge); padding-top:10px">
+        <input id="newParamName" class="grow" maxlength="28"
+               placeholder="Name it, e.g. Left from home" aria-label="Parameter name">
+        <select id="newParamMode" aria-label="Kind">
+          <option value="count">count them</option>
+          <option value="flag">did it happen</option>
+          <option value="value">store a value</option>
+        </select>
+        <select id="newParamReset" aria-label="Resets">
+          <option value="0">daily</option>
+          <option value="1">hourly</option>
+          <option value="6">every 6h</option>
+          <option value="12">every 12h</option>
+          <option value="168">weekly</option>
+          <option value="-1">never</option>
+        </select>
+        <label class="chk"><input type="checkbox" id="newParamMulti"> per app/place</label>
+        <button id="btnAddParam" class="tiny primary">Add</button>
+      </div>
+      <p class="note">
+        The name is the whole definition: Flowey reads it as plain English and
+        works out what it means. A parameter that never fires still counts as
+        news - "Left from home: has not happened at all today" is something he
+        can use.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="sect">Automations</span>
+      <div class="list" id="ruleList"></div>
+      <p class="note" id="ruleNote">
+        Each rule watches one event from your iOS Shortcuts.
+        <strong>interrupt</strong> cuts in immediately,
+        <strong>queue</strong> waits for the current script,
+        <strong>notify</strong> pulses until you press a button, and
+        <strong>weave</strong> says nothing now but feeds the fact into the
+        next generated script.
+      </p>
+      <div class="barrow">
+        <button id="btnAddRule" class="tiny primary">+ New automation</button>
+        <button id="btnRulesEdit" class="tiny">Edit as JSON</button>
+        <button id="btnRulesSave" class="tiny primary" hidden>Save</button>
+        <button id="btnRulesCancel" class="tiny" hidden>Cancel</button>
+      </div>
+      <textarea id="rulesJson" rows="16" hidden
+        style="width:100%; font-family:inherit; font-size:12px; background:var(--panel-2);
+               color:var(--ink); border:1px solid var(--edge-2); border-radius:5px; padding:8px"
+        aria-label="Rules as JSON"></textarea>
+    </div>
+  </section>
+
+  <footer id="topicLine"></footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.3.4/mqtt.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  /* ---------------------------------------------------------------------
+   * HiveMQ Cloud connection.
+   *
+   * From your cluster's Overview page. HOST is the hostname only. Port 8884
+   * is the websocket listener - 8883 is for native MQTT clients like the
+   * ESP32 and will not work from a browser.
+   *
+   * These are credentials: this file is now a secret, like secrets.h.
+   * Anything typed into the panel on first run is kept in this browser
+   * instead, which is the safer way to run it on a shared device.
+   * ------------------------------------------------------------------- */
+  /* Deliberately empty. This build is published publicly, so it
+     asks for these on first run and keeps them in this browser. */
+  var HOST = "";
+  var USER = "";
+  var PASS = "";
+
+  // A per-browser override wins over the values above, so the file itself
+  // can be shared without the credentials in it.
+  var ov = null;
+  try {
+    ov = JSON.parse(localStorage.getItem("floweuy.conn") || "null");
+    if (ov && ov.host) { HOST = ov.host; USER = ov.user; PASS = ov.pass; }
+  } catch (e) { /* blocked storage: it stays a shell, which is fine */ }
+
+  var ID     = (ov && ov.id) ? ov.id : "";
+  var BROKER = "wss://" + HOST + ":8884/mqtt";
+  var T = {
+    lcd:     "floweuy/" + ID + "/lcd",
+    cmd:     "floweuy/" + ID + "/cmd",
+    def:     "floweuy/" + ID + "/default",
+    haunt:   "floweuy/" + ID + "/haunt",
+    sfx:     "floweuy/" + ID + "/sfx",
+    config:  "floweuy/" + ID + "/config",
+    tracking: "floweuy/" + ID + "/tracking",
+    log:      "floweuy/" + ID + "/log",
+    gen:     "floweuy/" + ID + "/gen",
+    library: "floweuy/" + ID + "/scripts",
+    queue:   "floweuy/" + ID + "/queue"
+  };
+  var COLS = 16, MAX_STEPS = 24, OPT_MAX = 8;
+  var LS_KEY = "floweuy.library.v1";
+
+  var DREAD_NAMES = ["Calm", "Scary", "More scary", "Most scary"];
+  var PW_NAMES = { live: "On", dying: "Powering down", dead: "Off", scare: "BOO" };
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ----------------------------------------------------- sound fx ----- */
+  var SFX_SLOTS = 4;
+  var SFX_RATE  = 22050;          // match the device mixer exactly
+  var SFX_MAX   = 32 * 1024;      // per clip, about 1.5s
+  var LS_SFX    = "floweuy.sfx.v1";
+
+  // { name, b64 } per slot, or null. Kept in this browser so a device reboot
+  // can be repaired without re-fetching the original URLs.
+  var sfxLib = new Array(SFX_SLOTS).fill(null);
+
+  function loadSfx() {
+    try {
+      var raw = localStorage.getItem(LS_SFX);
+      if (raw) {
+        var a = JSON.parse(raw);
+        if (Array.isArray(a)) for (var i = 0; i < SFX_SLOTS; i++) sfxLib[i] = a[i] || null;
+      }
+    } catch (e) { /* blocked storage */ }
+  }
+  function saveSfx() {
+    try { localStorage.setItem(LS_SFX, JSON.stringify(sfxLib)); } catch (e) {}
+  }
+
+  function b64encode(bytes) {
+    var out = "", chunk = 0x8000;
+    for (var i = 0; i < bytes.length; i += chunk) {
+      out += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(out);
+  }
+
+  /*
+   * Decode whatever the browser can play, then reduce it to the format the
+   * device already mixes: mono, 22050Hz, unsigned 8-bit. Doing it here means
+   * playback on the ESP32 is a plain array read.
+   */
+  function toDevicePcm(arrayBuf) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    var ctx = new AC();
+    return ctx.decodeAudioData(arrayBuf).then(function (buf) {
+      var chans = [];
+      for (var c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c));
+      var ratio = buf.sampleRate / SFX_RATE;
+      var full = Math.floor(buf.length / ratio);
+      var outLen = Math.min(SFX_MAX, full);
+      var out = new Uint8Array(outLen);
+
+      // Find the peak first: normalising means a quiet clip is not lost under
+      // the music, and a loud one does not slam into the mixer clamp.
+      var peak = 0;
+      for (var i = 0; i < buf.length; i++) {
+        var v = 0;
+        for (var c2 = 0; c2 < chans.length; c2++) v += chans[c2][i];
+        v /= chans.length;
+        if (v < 0) v = -v;
+        if (v > peak) peak = v;
+      }
+      var gain = peak > 0.001 ? (0.92 / peak) : 1;
+
+      for (var j = 0; j < outLen; j++) {
+        var src = j * ratio;
+        var i0 = src | 0, frac = src - i0;
+        var i1 = i0 + 1 < buf.length ? i0 + 1 : buf.length - 1;
+        var a = 0, b = 0;
+        for (var c3 = 0; c3 < chans.length; c3++) { a += chans[c3][i0]; b += chans[c3][i1]; }
+        a /= chans.length; b /= chans.length;
+        var v2 = (a + (b - a) * frac) * gain;
+        if (v2 > 1) v2 = 1; else if (v2 < -1) v2 = -1;
+        out[j] = Math.round((v2 * 0.5 + 0.5) * 255);
+      }
+      try { ctx.close(); } catch (e) {}
+      return { pcm: out, seconds: outLen / SFX_RATE, truncated: full > SFX_MAX };
+    });
+  }
+
+  function firstFreeSlot() {
+    for (var i = 0; i < SFX_SLOTS; i++) if (!sfxLib[i]) return i;
+    return -1;
+  }
+
+  // Upload in chunks: the device MQTT buffer is 4KB and base64 inflates by a
+  // third, so about 2.1KB of samples per message.
+  function uploadSlot(slot, playAfter) {
+    var clip = sfxLib[slot];
+    if (!clip) return;
+    if (!client || !client.connected) { toast("Not connected"); return; }
+
+    var bin = atob(clip.b64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+    client.publish(T.sfx, JSON.stringify({
+      op: "begin", slot: slot, name: clip.name.slice(0, 18), len: bytes.length
+    }), { qos: 1 });
+
+    var CH = 2100, off = 0;
+    while (off < bytes.length) {
+      var end = off + CH < bytes.length ? off + CH : bytes.length;
+      client.publish(T.sfx, JSON.stringify({
+        op: "data", slot: slot, off: off, b64: b64encode(bytes.subarray(off, end))
+      }), { qos: 1 });
+      off = end;
+    }
+    client.publish(T.sfx, JSON.stringify({
+      op: "end", slot: slot, play: !!playAfter
+    }), { qos: 1 });
+    toast("Sent " + clip.name + " to slot " + (slot + 1));
+  }
+
+  function addClip(name, arrayBuf) {
+    var slot = firstFreeSlot();
+    if (slot < 0) { toast("All four slots are full"); return; }
+    $("sfxNote").textContent = "Decoding " + name + "...";
+    toDevicePcm(arrayBuf).then(function (r) {
+      sfxLib[slot] = { name: name.slice(0, 18), b64: b64encode(r.pcm) };
+      saveSfx();
+      renderSfx();
+      renderSteps();
+      $("sfxNote").textContent = name + ": " + r.seconds.toFixed(2) + "s, " +
+        (r.pcm.length / 1024).toFixed(1) + " KB" +
+        (r.truncated ? " (trimmed to fit the slot)" : "");
+      uploadSlot(slot, true);
+    })["catch"](function (e) {
+      $("sfxNote").textContent = "Could not decode that: " + (e.message || e);
+    });
+  }
+
+  function renderSfx() {
+    var host = $("sfxList");
+    host.textContent = "";
+    for (var i = 0; i < SFX_SLOTS; i++) {
+      (function (i) {
+        var clip = sfxLib[i];
+        var row = document.createElement("div");
+        row.className = "listrow";
+        var nm = document.createElement("span");
+        nm.className = "nm";
+        nm.textContent = (i + 1) + ". " + (clip ? clip.name : "empty");
+        row.appendChild(nm);
+        if (clip) {
+          row.appendChild(mkBtn("\u25b6", "Play on the device", function () {
+            if (pub(T.sfx, { op: "play", slot: i })) toast("Playing " + clip.name);
+          }));
+          row.appendChild(mkBtn("\u21bb", "Re-send to the device", function () {
+            uploadSlot(i, false);
+          }));
+          var del = mkBtn("\u2715", "Clear this slot", function () {
+            pub(T.sfx, { op: "clear", slot: i });
+            sfxLib[i] = null; saveSfx(); renderSfx(); renderSteps();
+          });
+          del.className = "tiny danger";
+          row.appendChild(del);
+        }
+        host.appendChild(row);
+      })(i);
+    }
+  }
+
+  /* ------------------------------------------------ factory scripts ---- */
+  // These mirror the firmware's built-ins so they can be edited rather than
+  // only replaced. Editing one here and hitting "Make default" overrides it.
+  function step(t, b, d, h, oa, ob, na, nb) {
+    return { t: t || "", b: b || "", d: d || 0, h: h == null ? 1500 : h,
+             oa: oa || "", ob: ob || "", na: na == null ? -1 : na,
+             nb: nb == null ? -1 : nb, nx: -1, sx: -1 };
+  }
+
+  /*
+   * The script the app falls back to when nothing else is loaded.
+   *
+   * The local build ships Undertale's opening here. This one does not:
+   * the page is public, and that is someone else's writing.
+   */
+  function factoryMain() {
+    return { id: "factory-main", name: "Built-in", loop: true, steps: [
+      step("Howdy!", "I am a flower.", 0, 1400),
+      step("I live on a", "desk. It is nice.", 0, 1400),
+      step("Mostly I watch", "the window.", 0, 1400),
+      step("Want to hear a", "joke?", 0, 0, "YES", "NO", 5, 6),
+      step("I forgot it.", "Sorry, friend.", 0, 1600),
+      step("Fair enough!", "", 0, 1400),
+      step("See you soon.", "", 0, 2000)
+    ]};
+  }
+
+  function factoryHaunt() {
+    return { id: "factory-haunt", name: "Power-off BOO", loop: false, steps: [
+      step("You CANNOT", "turn me off.", 3, 1700),
+      step("I am in the", "wires now.", 3, 1700),
+      step("That switch is", "for YOUR comfort", 3, 1300),
+      step("Not mine.", "", 3, 1800),
+      step("Go on.", "Try it again.", 2, 1900),
+      step("...", "", 0, 1300),
+      step("Golly!", "Where were we?", 0, 2000)
+    ]};
+  }
+
+  /* ------------------------------------------------------- library ----- */
+  var lib = { scripts: [], defaultId: null, hauntId: null };
+  var selId = null;
+
+  function uid() { return Math.random().toString(36).slice(2, 9); }
+
+  function loadLocal() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (raw) {
+        var d = JSON.parse(raw);
+        if (d && Array.isArray(d.scripts)) return d;
+      }
+    } catch (e) { /* private mode, blocked storage - fall through */ }
+    return null;
+  }
+
+  function saveLocal() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(lib)); }
+    catch (e) { /* not fatal: the broker copy is the durable one */ }
+  }
+
+  function seed() {
+    var m = factoryMain(), h = factoryHaunt();
+    lib = { scripts: [m, h], defaultId: m.id, hauntId: h.id };
+  }
+
+  function current() {
+    for (var i = 0; i < lib.scripts.length; i++)
+      if (lib.scripts[i].id === selId) return lib.scripts[i];
+    return null;
+  }
+
+  /* ----------------------------------------------------- monitor ------- */
+  var screenEl = $("screen"), dotEl = $("dot"), statusEl = $("statusText"), lastEl = $("lastSeen");
+  var cells = [[], []];
+  ["row0", "row1"].forEach(function (id, r) {
+    var row = $(id);
+    for (var c = 0; c < COLS; c++) {
+      var d = document.createElement("span");
+      d.className = "cell"; d.textContent = " ";
+      row.appendChild(d); cells[r].push(d);
+    }
+  });
+  var pips = [];
+  for (var pi = 0; pi < 3; pi++) {
+    var p = document.createElement("span"); p.className = "pip";
+    $("dreadPips").appendChild(p); pips.push(p);
+  }
+  var lastMsgAt = 0;
+  var lastUptime = null;
+  var notifyDragging = false;
+
+  function setStatus(cls, text) {
+    dotEl.className = "dot" + (cls ? " " + cls : "");
+    statusEl.textContent = text;
+  }
+  function writeRow(r, text) {
+    var s = text == null ? "" : String(text);
+    for (var c = 0; c < COLS; c++) {
+      var ch = c < s.length ? s[c] : " ";
+      var g = ch === "#" ? "█" : ch;
+      if (cells[r][c].textContent !== g) cells[r][c].textContent = g;
+    }
+  }
+  function fmtUp(sec) {
+    sec = Math.max(0, sec | 0);
+    var h = (sec / 3600) | 0, m = ((sec % 3600) / 60) | 0, s = sec % 60;
+    if (h) return h + "h " + m + "m";
+    if (m) return m + "m " + s + "s";
+    return s + "s";
+  }
+  function render(d) {
+    writeRow(0, d.r0); writeRow(1, d.r1);
+    screenEl.classList.remove("offline");
+    screenEl.classList.toggle("dark", !(d.lit === 1 || d.lit === true));
+    var dr = Math.max(0, Math.min(3, d.dread | 0));
+    $("dreadName").textContent = DREAD_NAMES[dr];
+    for (var i = 0; i < 3; i++) pips[i].className = "pip" + (i < dr ? " on-" + dr : "");
+    var v = Math.max(0, Math.min(100, d.vol | 0));
+    $("volText").textContent = (d.mute ? "muted" : v + "%");
+    $("volBar").style.width = (d.mute ? 0 : v) + "%";
+    if (!volDragging) {
+      $("volSlider").value = v;
+      $("volPct").textContent = v + "%";
+    }
+    $("btnMute").textContent = d.mute ? "Unmute" : "Mute";
+    $("btnMute").classList.toggle("muted-on", !!d.mute);
+    if (d.realoff != null) $("cbRealOff").checked = !!d.realoff;
+    if (d.fw) $("fwVersion").textContent = d.fw;
+    if (d.ota && d.ota !== "idle") {
+      $("otaNote").textContent = "Update: " + d.ota;
+    }
+    if (d.idle != null && d.idle !== idleMins) { idleMins = d.idle; showIdle(); }
+    if (d.tsc != null && paceDragging !== "paceType") { $("paceType").value = d.tsc; showPace(); }
+    if (d.hsc != null && paceDragging !== "paceHold") { $("paceHold").value = d.hsc; showPace(); }
+    $("pwText").textContent = PW_NAMES[d.pw] || d.pw || "--";
+    var PRES = { resting: "Resting", notify: "Waiting to be read", playing: null };
+    var presLabel = PRES[d.pres];
+    $("scrText").textContent = presLabel
+      ? presLabel
+      : ((d.scr || "--") + (d.loop ? " ↻" : ""));
+    if (d.notif && !notifyDragging) { notifySecs = d.notif; showEvery(); }
+    if (d.nstyle != null && d.nstyle !== curStyle) { curStyle = d.nstyle; renderStyles(); }
+    if (d.rst && d.rst !== "power-on" && d.rst !== "external" && d.rst !== "unknown") {
+      // Worth surfacing: a brownout or crash explains a lot of odd behaviour.
+      $("lcdFixNote").textContent = "Last restart: " + d.rst +
+        (d.lcdfix ? ", " + d.lcdfix + " screen repairs" : "");
+    }
+    $("stepText").textContent = d.of ? ((d.step | 0) + 1) + " / " + d.of : "--";
+    $("upText").textContent = fmtUp(d.up);
+
+    [["lm", "lvMusic", "lvMusicPct"], ["ls", "lvSfx", "lvSfxPct"],
+     ["lb", "lvBlip", "lvBlipPct"]].forEach(function (t) {
+      if (d[t[0]] == null || lvDragging === t[1]) return;
+      $(t[1]).value = d[t[0]];
+      $(t[2]).textContent = d[t[0]] + "%";
+    });
+
+    if (d.str) {
+      $("scrText").textContent = "streaming";
+      $("strNote").textContent = "Streaming. Buffer " + (d.strbuf | 0) + "%" +
+        ((d.strur | 0) ? ", " + d.strur + " dropouts" : ", no dropouts") + ".";
+    }
+
+    if (d.sfxmax) {
+      $("sfxMem").textContent = "Device memory: " + (d.sfxused / 1024).toFixed(1) +
+        " KB of " + (d.sfxmax / 1024).toFixed(0) + " KB used.";
+    }
+
+    /*
+     * Clips live in the device RAM, so a reboot loses them. Uptime going
+     * backwards is the tell; re-send whatever this browser holds. Flash
+     * would survive a reboot but wear out for no good reason.
+     */
+    if (lastUptime != null && d.up < lastUptime) {
+      var any = sfxLib.some(function (c) { return !!c; });
+      if (any) {
+        toast("Device rebooted, restoring sounds");
+        for (var si = 0; si < SFX_SLOTS; si++) if (sfxLib[si]) uploadSlot(si, false);
+      }
+    }
+    lastUptime = d.up;
+
+    lastMsgAt = Date.now();
+  }
+  setInterval(function () {
+    if (!lastMsgAt) return;
+    var age = (Date.now() - lastMsgAt) / 1000;
+    lastEl.textContent = age < 2 ? "Live." : "Last update " + Math.round(age) + "s ago.";
+    if (age > 15) { screenEl.classList.add("offline"); setStatus("bad", "device silent"); }
+  }, 1000);
+
+  /* -------------------------------------------------------- editor ----- */
+  function toast(msg) {
+    var t = document.createElement("div");
+    t.className = "toast"; t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, 2200);
+  }
+
+  function renderList() {
+    var host = $("scriptList");
+    host.textContent = "";
+    lib.scripts.forEach(function (sc) {
+      var row = document.createElement("div");
+      row.className = "listrow" + (sc.id === selId ? " sel" : "");
+      var nm = document.createElement("span");
+      nm.className = "nm";
+      nm.textContent = sc.name + "  (" + sc.steps.length + ")";
+      row.appendChild(nm);
+      if (sc.id === lib.defaultId) { var a = document.createElement("span"); a.className = "tag def"; a.textContent = "default"; row.appendChild(a); }
+      if (sc.id === lib.hauntId)   { var b = document.createElement("span"); b.className = "tag haunt"; b.textContent = "power-off"; row.appendChild(b); }
+      row.addEventListener("click", function () { selId = sc.id; renderAll(); });
+      host.appendChild(row);
+    });
+  }
+
+  function mkBtn(label, title, fn) {
+    var b = document.createElement("button");
+    b.className = "tiny"; b.textContent = label; b.title = title;
+    b.addEventListener("click", fn);
+    return b;
+  }
+
+  function renderSteps() {
+    var sc = current(), host = $("stepList");
+    host.textContent = "";
+    if (!sc) return;
+    $("scriptName").value = sc.name;
+    $("chkLoop").checked = !!sc.loop;
+
+    sc.steps.forEach(function (st, i) {
+      var box = document.createElement("div");
+      box.className = "step";
+
+      // head: number, reorder arrows, remove
+      var head = document.createElement("div");
+      head.className = "step-head";
+      var no = document.createElement("span");
+      no.className = "step-no"; no.textContent = (i + 1) + ".";
+      head.appendChild(no);
+      head.appendChild(mkBtn("▲", "Move up", function () {
+        if (i === 0) return;
+        var tmp = sc.steps[i - 1]; sc.steps[i - 1] = sc.steps[i]; sc.steps[i] = tmp;
+        commit();
+      }));
+      head.appendChild(mkBtn("▼", "Move down", function () {
+        if (i === sc.steps.length - 1) return;
+        var tmp = sc.steps[i + 1]; sc.steps[i + 1] = sc.steps[i]; sc.steps[i] = tmp;
+        commit();
+      }));
+      var spacer = document.createElement("span");
+      spacer.className = "grow"; head.appendChild(spacer);
+      var rm = mkBtn("✕", "Remove step", function () { sc.steps.splice(i, 1); commit(); });
+      rm.className = "tiny danger"; head.appendChild(rm);
+      box.appendChild(head);
+
+      // the two LCD lines
+      var lines = document.createElement("div");
+      lines.className = "lines";
+      [["t", "Top line"], ["b", "Bottom line"]].forEach(function (pair) {
+        var wrap = document.createElement("div");
+        wrap.className = "lcdline";
+        var inp = document.createElement("input");
+        inp.type = "text"; inp.maxLength = COLS; inp.value = st[pair[0]];
+        inp.placeholder = pair[1];
+        inp.setAttribute("aria-label", pair[1] + " of step " + (i + 1));
+        inp.id = "s" + i + pair[0];
+        var cnt = document.createElement("span");
+        cnt.className = "count";
+        var upd = function () {
+          cnt.textContent = inp.value.length + "/" + COLS;
+          cnt.classList.toggle("over", inp.value.length > COLS);
+        };
+        upd();
+        inp.addEventListener("input", function () { st[pair[0]] = inp.value; upd(); saveLocal(); });
+        wrap.appendChild(inp); wrap.appendChild(cnt);
+        lines.appendChild(wrap);
+      });
+      box.appendChild(lines);
+
+      // dread + hold, both on arrows
+      var knobs = document.createElement("div");
+      knobs.className = "knobs";
+
+      var kd = document.createElement("div"); kd.className = "knob";
+      var kdl = document.createElement("span"); kdl.className = "k"; kdl.textContent = "Dread";
+      var kdv = document.createElement("span"); kdv.className = "v"; kdv.textContent = DREAD_NAMES[st.d];
+      kd.appendChild(kdl);
+      kd.appendChild(mkBtn("◀", "Less dread", function () { st.d = Math.max(0, st.d - 1); commit(); }));
+      kd.appendChild(kdv);
+      kd.appendChild(mkBtn("▶", "More dread", function () { st.d = Math.min(3, st.d + 1); commit(); }));
+      knobs.appendChild(kd);
+
+      var kh = document.createElement("div"); kh.className = "knob";
+      var khl = document.createElement("span"); khl.className = "k"; khl.textContent = "Hold";
+      var khv = document.createElement("span"); khv.className = "v"; khv.textContent = (st.h / 1000).toFixed(1) + "s";
+      kh.appendChild(khl);
+      kh.appendChild(mkBtn("◀", "Shorter", function () { st.h = Math.max(0, st.h - 100); commit(); }));
+      kh.appendChild(khv);
+      kh.appendChild(mkBtn("▶", "Longer", function () { st.h = Math.min(20000, st.h + 100); commit(); }));
+      // which sound to fire when this step begins
+      var ks = document.createElement("div"); ks.className = "knob";
+      var ksl = document.createElement("span"); ksl.className = "k"; ksl.textContent = "Sound";
+      var ksel = document.createElement("select");
+      ksel.id = "x" + i;
+      ksel.setAttribute("aria-label", "Sound for step " + (i + 1));
+      var none = document.createElement("option");
+      none.value = "-1"; none.textContent = "none";
+      ksel.appendChild(none);
+      for (var q = 0; q < SFX_SLOTS; q++) {
+        var o = document.createElement("option");
+        o.value = String(q);
+        o.textContent = sfxLib[q] ? sfxLib[q].name : ("slot " + (q + 1) + " (empty)");
+        ksel.appendChild(o);
+      }
+      ksel.value = String(st.sx == null ? -1 : st.sx);
+      ksel.addEventListener("change", function () {
+        st.sx = parseInt(ksel.value, 10); saveLocal(); publishLibrary();
+      });
+      ks.appendChild(ksl); ks.appendChild(ksel);
+      knobs.appendChild(ks);
+      box.appendChild(knobs);
+
+      // choices
+      var ch = document.createElement("div");
+      ch.className = "choice";
+      var lab = document.createElement("label");
+      lab.className = "chk";
+      var cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = !!st.oa; cb.id = "c" + i;
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(" Ask a question here"));
+      ch.appendChild(lab);
+
+      if (st.oa) {
+        var grid = document.createElement("div");
+        grid.className = "choice-grid";
+        [["oa", "na", "Left button"], ["ob", "nb", "Right button"]].forEach(function (c) {
+          var col = document.createElement("div");
+          var l = document.createElement("div");
+          l.className = "k"; l.style.fontSize = "10px"; l.style.color = "var(--ink-dim)";
+          l.textContent = c[2];
+          var inp = document.createElement("input");
+          inp.type = "text"; inp.maxLength = OPT_MAX; inp.value = st[c[0]];
+          inp.placeholder = "label"; inp.id = "o" + i + c[0];
+          inp.setAttribute("aria-label", c[2] + " label");
+          inp.addEventListener("input", function () { st[c[0]] = inp.value; saveLocal(); });
+          var sel = document.createElement("select");
+          sel.id = "j" + i + c[1];
+          sel.setAttribute("aria-label", c[2] + " jumps to");
+          var o0 = document.createElement("option");
+          o0.value = "-1"; o0.textContent = "then: next step";
+          sel.appendChild(o0);
+          sc.steps.forEach(function (_, k) {
+            var o = document.createElement("option");
+            o.value = String(k); o.textContent = "then: step " + (k + 1);
+            sel.appendChild(o);
+          });
+          sel.value = String(st[c[1]]);
+          sel.addEventListener("change", function () { st[c[1]] = parseInt(sel.value, 10); saveLocal(); });
+          col.appendChild(l); col.appendChild(inp); col.appendChild(sel);
+          grid.appendChild(col);
+        });
+        ch.appendChild(grid);
+      }
+
+      cb.addEventListener("change", function () {
+        if (cb.checked) { st.oa = "YES"; st.ob = "NO"; }
+        else { st.oa = ""; st.ob = ""; st.na = -1; st.nb = -1; }
+        commit();
+      });
+      box.appendChild(ch);
+      host.appendChild(box);
+    });
+  }
+
+  function renderAll() { renderList(); renderSteps(); }
+  function commit() { saveLocal(); publishLibrary(); renderAll(); }
+
+  /* ------------------------------------------------------ transport ---- */
+  var client = null;
+
+  function pub(topic, obj, retain) {
+    if (!client || !client.connected) { toast("Not connected"); return false; }
+    client.publish(topic, JSON.stringify(obj), { qos: 0, retain: !!retain });
+    return true;
+  }
+
+  // Trim to what the firmware accepts so nothing is silently cut on device.
+  function wire(sc) {
+    return {
+      name: (sc.name || "custom").slice(0, 20),
+      loop: !!sc.loop,
+      steps: sc.steps.slice(0, MAX_STEPS).map(function (s) {
+        return {
+          t: (s.t || "").slice(0, COLS),
+          b: (s.b || "").slice(0, COLS),
+          d: s.d | 0, h: s.h | 0,
+          oa: (s.oa || "").slice(0, OPT_MAX),
+          ob: (s.ob || "").slice(0, OPT_MAX),
+          na: s.na | 0, nb: s.nb | 0, nx: s.nx == null ? -1 : (s.nx | 0),
+          sx: s.sx == null ? -1 : (s.sx | 0)
+        };
+      })
+    };
+  }
+
+  var libTimer = null;
+  function publishLibrary() {
+    // Debounced: typing a line should not publish on every keystroke.
+    clearTimeout(libTimer);
+    libTimer = setTimeout(function () { pub(T.library, lib, true); }, 600);
+  }
+
+  function withSel(fn) {
+    var sc = current();
+    if (!sc) { toast("Pick a script first"); return; }
+    if (!sc.steps.length) { toast("Add a step first"); return; }
+    fn(sc);
+  }
+
+  $("btnPlay").addEventListener("click", function () {
+    withSel(function (sc) {
+      if (pub(T.cmd, { op: "play", loop: !!sc.loop, script: wire(sc) })) toast("Playing " + sc.name);
+    });
+  });
+  $("btnNotify").addEventListener("click", function () {
+    withSel(function (sc) {
+      if (pub(T.cmd, { op: "notify", loop: !!sc.loop, script: wire(sc) })) {
+        toast(sc.name + " is waiting to be read");
+      }
+    });
+  });
+  $("btnQueue").addEventListener("click", function () {
+    withSel(function (sc) {
+      if (pub(T.cmd, { op: "queue", loop: !!sc.loop, script: wire(sc) })) toast("Queued " + sc.name);
+    });
+  });
+  $("btnStop").addEventListener("click", function () {
+    if (pub(T.cmd, { op: "stop" })) toast("Back to default");
+  });
+  $("btnDefault").addEventListener("click", function () {
+    withSel(function (sc) {
+      if (pub(T.def, wire(sc), true)) {
+        lib.defaultId = sc.id; commit(); toast(sc.name + " is now the default");
+      }
+    });
+  });
+  $("btnHaunt").addEventListener("click", function () {
+    withSel(function (sc) {
+      if (pub(T.haunt, wire(sc), true)) {
+        lib.hauntId = sc.id; commit(); toast(sc.name + " plays after power-off");
+      }
+    });
+  });
+
+  $("btnNew").addEventListener("click", function () {
+    var sc = { id: uid(), name: "New script", loop: false, steps: [step("", "", 0, 1500)] };
+    lib.scripts.push(sc); selId = sc.id; commit();
+  });
+  $("btnDup").addEventListener("click", function () {
+    var sc = current(); if (!sc) return;
+    var copy = JSON.parse(JSON.stringify(sc));
+    copy.id = uid(); copy.name = (sc.name + " copy").slice(0, 20);
+    lib.scripts.push(copy); selId = copy.id; commit();
+  });
+  $("btnDel").addEventListener("click", function () {
+    var sc = current(); if (!sc) return;
+    lib.scripts = lib.scripts.filter(function (x) { return x.id !== sc.id; });
+    if (lib.defaultId === sc.id) lib.defaultId = null;
+    if (lib.hauntId === sc.id) lib.hauntId = null;
+    selId = lib.scripts.length ? lib.scripts[0].id : null;
+    commit();
+  });
+  $("btnAddStep").addEventListener("click", function () {
+    var sc = current(); if (!sc) return;
+    if (sc.steps.length >= MAX_STEPS) { toast("24 steps is the device limit"); return; }
+    sc.steps.push(step("", "", 0, 1500)); commit();
+  });
+  $("scriptName").addEventListener("input", function () {
+    var sc = current(); if (!sc) return;
+    sc.name = $("scriptName").value; saveLocal(); publishLibrary(); renderList();
+  });
+  $("chkLoop").addEventListener("change", function () {
+    var sc = current(); if (!sc) return;
+    sc.loop = $("chkLoop").checked; saveLocal(); publishLibrary();
+  });
+
+  // tabs
+  function showTab(which) {
+    ["monitor", "scripts", "sounds", "tracking", "care", "log", "brain"].forEach(function (name) {
+      var on = which === name;
+      var cap = name.charAt(0).toUpperCase() + name.slice(1);
+      $("tab" + cap).setAttribute("aria-selected", on ? "true" : "false");
+      $("pane" + cap).hidden = !on;
+    });
+  }
+  /* ---- device volume and mute ----
+   * The slider is only authoritative while it is being dragged; the rest of
+   * the time the device's own reported value wins, so the button-hold on the
+   * hardware and this control never fight each other.
+   */
+  var volDragging = false;
+  var volSend = null;
+
+  function pushVolume(pct) {
+    clearTimeout(volSend);
+    // Coalesce: dragging fires continuously, and there is no reason to put
+    // sixty messages a second on the wire for one gesture.
+    volSend = setTimeout(function () {
+      pub(T.cmd, { op: "vol", v: (pct / 100) * 1.25 });
+    }, 90);
+  }
+
+  $("volSlider").addEventListener("input", function () {
+    volDragging = true;
+    $("volPct").textContent = $("volSlider").value + "%";
+    pushVolume(parseInt($("volSlider").value, 10));
+  });
+  ["change", "pointerup", "blur"].forEach(function (ev) {
+    $("volSlider").addEventListener(ev, function () { volDragging = false; });
+  });
+  $("btnMute").addEventListener("click", function () {
+    pub(T.cmd, { op: "mute" });        // no field means toggle
+  });
+
+  $("btnStream").addEventListener("click", function () {
+    var url = $("strUrl").value.trim();
+    if (!url) { toast("Paste a URL first"); return; }
+    if (pub(T.cmd, { op: "stream", url: url, loop: $("strLoop").checked })) {
+      $("strNote").textContent = "Asked the device to buffer that. The flash " +
+        "track keeps playing until it has enough in hand.";
+    }
+  });
+  $("btnStreamStop").addEventListener("click", function () {
+    if (pub(T.cmd, { op: "stopstream" })) toast("Stream stopped");
+  });
+
+  /* ---- mix levels ----
+   * Same pattern as the volume slider: whichever slider is being dragged is
+   * authoritative, and the device's reported values drive the rest.
+   */
+  var lvDragging = null;
+  var lvSend = null;
+
+  function pushLevels() {
+    clearTimeout(lvSend);
+    lvSend = setTimeout(function () {
+      pub(T.cmd, {
+        op: "levels",
+        music: parseInt($("lvMusic").value, 10) / 100,
+        sfx:   parseInt($("lvSfx").value, 10) / 100,
+        blip:  parseInt($("lvBlip").value, 10) / 100
+      });
+    }, 120);
+  }
+
+  [["lvMusic", "lvMusicPct"], ["lvSfx", "lvSfxPct"], ["lvBlip", "lvBlipPct"]]
+    .forEach(function (pair) {
+      var el = $(pair[0]);
+      el.addEventListener("input", function () {
+        lvDragging = pair[0];
+        $(pair[1]).textContent = el.value + "%";
+        pushLevels();
+      });
+      ["change", "pointerup", "blur"].forEach(function (ev) {
+        el.addEventListener(ev, function () { lvDragging = null; });
+      });
+    });
+
+  $("btnLvReset").addEventListener("click", function () {
+    $("lvMusic").value = 55; $("lvSfx").value = 55; $("lvBlip").value = 30;
+    $("lvMusicPct").textContent = "55%";
+    $("lvSfxPct").textContent = "55%";
+    $("lvBlipPct").textContent = "30%";
+    lvDragging = null;
+    pushLevels();
+    toast("Mix reset");
+  });
+
+  /* ---- how often to re-pulse a waiting message ---- */
+  var notifySecs = 300;
+  var NOTIFY_STEPS = [30, 60, 120, 300, 600, 900, 1800, 3600, 10800, 21600, 43200, 86400];
+
+  function fmtEvery(sec) {
+    if (sec < 60) return sec + " sec";
+    if (sec < 3600) return (sec / 60) + " min";
+    return (sec / 3600) + " hr";
+  }
+  function showEvery() { $("notifyEvery").textContent = fmtEvery(notifySecs); }
+
+  function stepNotify(dir) {
+    var i = 0, best = 0;
+    for (i = 0; i < NOTIFY_STEPS.length; i++) {
+      if (NOTIFY_STEPS[i] <= notifySecs) best = i;
+    }
+    best += dir;
+    if (best < 0) best = 0;
+    if (best > NOTIFY_STEPS.length - 1) best = NOTIFY_STEPS.length - 1;
+    notifySecs = NOTIFY_STEPS[best];
+    showEvery();
+    pub(T.cmd, { op: "notifyevery", secs: notifySecs });
+  }
+  /* ---- notification style ---- */
+  var STYLES = [
+    ["Gentle",  "text grows in, two soft notes"],
+    ["Blink",   "blinks three times, single bell"],
+    ["Slide",   "words slide in, rising notes"],
+    ["Dots",    "dots then words, warm pulse"],
+    ["Minimal", "one line, two soft knocks"]
+  ];
+  var curStyle = 0;
+
+  function renderStyles() {
+    var host = $("styleList");
+    host.textContent = "";
+    STYLES.forEach(function (st, i) {
+      var row = document.createElement("div");
+      row.className = "listrow" + (i === curStyle ? " sel" : "");
+      var nm = document.createElement("span");
+      nm.className = "nm";
+      nm.textContent = st[0] + " \u2014 " + st[1];
+      row.appendChild(nm);
+      row.appendChild(mkBtn("\u25b6", "Preview on the device", function (e) {
+        e.stopPropagation();
+        pub(T.cmd, { op: "notifystyle", style: i, preview: true });
+        curStyle = i; renderStyles();
+        toast("Previewing " + st[0]);
+      }));
+      row.addEventListener("click", function () {
+        curStyle = i; renderStyles();
+        pub(T.cmd, { op: "notifystyle", style: i });
+        toast(st[0] + " selected");
+      });
+      host.appendChild(row);
+    });
+  }
+  renderStyles();
+
+  $("btnLcdFix").addEventListener("click", function () {
+    if (pub(T.cmd, { op: "lcdfix" })) {
+      $("lcdFixNote").textContent = "Re-initialised.";
+      setTimeout(function () { $("lcdFixNote").textContent = ""; }, 3000);
+    }
+  });
+
+  $("btnNotifyDown").addEventListener("click", function () { stepNotify(-1); });
+  $("btnNotifyUp").addEventListener("click", function () { stepNotify(1); });
+  $("btnNotifyClear").addEventListener("click", function () {
+    if (pub(T.cmd, { op: "stop" })) toast("Pending message cleared");
+  });
+
+  $("tabMonitor").addEventListener("click", function () { showTab("monitor"); });
+  $("tabScripts").addEventListener("click", function () { showTab("scripts"); });
+  $("tabSounds").addEventListener("click",  function () { showTab("sounds"); });
+  /* ---- pace: multipliers, applied on the device ---- */
+  var paceDragging = null, paceSend = null;
+
+  function paceLabel(v) {
+    if (v === 100) return "normal";
+    return (v < 100 ? "faster" : "slower") + " " + (v / 100).toFixed(1) + "x";
+  }
+  function showPace() {
+    $("paceTypeVal").textContent = paceLabel(parseInt($("paceType").value, 10));
+    $("paceHoldVal").textContent = paceLabel(parseInt($("paceHold").value, 10));
+  }
+  function pushPace() {
+    clearTimeout(paceSend);
+    paceSend = setTimeout(function () {
+      pub(T.cmd, { op: "pace",
+                   type: parseInt($("paceType").value, 10) / 100,
+                   hold: parseInt($("paceHold").value, 10) / 100 });
+    }, 140);
+  }
+  [["paceType"], ["paceHold"]].forEach(function (pair) {
+    var el = $(pair[0]);
+    el.addEventListener("input", function () {
+      paceDragging = pair[0]; showPace(); pushPace();
+    });
+    ["change", "pointerup", "blur"].forEach(function (ev) {
+      el.addEventListener(ev, function () { paceDragging = null; });
+    });
+  });
+  $("btnPaceReset").addEventListener("click", function () {
+    $("paceType").value = 100; $("paceHold").value = 100;
+    paceDragging = null; showPace(); pushPace(); toast("Pace reset");
+  });
+
+  /* ---- the checklist ---- */
+  var topicStatus = {};       // id -> done, from the relay
+
+  function renderTopics() {
+    var host = $("topicList");
+    host.textContent = "";
+    var topics = relayCfg.topics || [];
+    if (!topics.length) {
+      var e = document.createElement("p");
+      e.className = "note";
+      e.textContent = "Nothing on the list - he will just talk.";
+      host.appendChild(e);
+      return;
+    }
+    topics.forEach(function (t, i) {
+      var row = document.createElement("div");
+      row.className = "listrow";
+      var done = topicStatus[t.id];
+
+      var tick = document.createElement("span");
+      tick.style.cssText = "min-width:16px; color:" +
+        (done ? "var(--lcd-on)" : "var(--ink-dim)");
+      tick.textContent = done ? "\u2713" : "\u25cb";
+      tick.title = done ? "covered" : "not covered yet";
+      row.appendChild(tick);
+
+      var txt = document.createElement("input");
+      txt.className = "grow"; txt.maxLength = 90; txt.value = t.text || "";
+      if (done) txt.style.opacity = ".55";
+      txt.addEventListener("change", function () {
+        t.text = txt.value; pushConfig();
+      });
+      row.appendChild(txt);
+
+      var ask = document.createElement("label");
+      ask.className = "chk";
+      var cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = !!t.ask; cb.id = "tpk" + i;
+      cb.addEventListener("change", function () { t.ask = cb.checked; pushConfig(); });
+      ask.appendChild(cb);
+      ask.appendChild(document.createTextNode(" ask"));
+      ask.title = "Put a two-button question about this on screen";
+      row.appendChild(ask);
+
+      var scope = document.createElement("select");
+      [["today", "today"], ["week", "weekly"]].forEach(function (o) {
+        var opt = document.createElement("option");
+        opt.value = o[0]; opt.textContent = o[1];
+        scope.appendChild(opt);
+      });
+      scope.value = t.scope || "today";
+      scope.addEventListener("change", function () { t.scope = scope.value; pushConfig(); });
+      row.appendChild(scope);
+
+      var del = mkBtn("\u2715", "Remove", function () {
+        relayCfg.topics.splice(i, 1); pushConfig(); renderTopics();
+      });
+      del.className = "tiny danger";
+      row.appendChild(del);
+      host.appendChild(row);
+    });
+  }
+
+  $("btnAddTopic").addEventListener("click", function () {
+    var text = $("newTopic").value.trim();
+    if (!text) { toast("Say what to talk about"); return; }
+    relayCfg.topics = relayCfg.topics || [];
+    if (relayCfg.topics.length >= 10) {
+      toast("Ten is the limit"); return;
+    }
+    relayCfg.topics.push({
+      id: "t" + Math.random().toString(36).slice(2, 8),
+      text: text,
+      ask: $("newTopicAsk").checked,
+      scope: $("newTopicScope").value
+    });
+    $("newTopic").value = ""; $("newTopicAsk").checked = false;
+    pushConfig(); renderTopics();
+    toast("Added");
+  });
+
+  $("tabTracking").addEventListener("click", function () { showTab("tracking"); });
+  $("tabCare").addEventListener("click",    function () { showTab("care"); });
+  $("tabLog").addEventListener("click",     function () { showTab("log"); });
+
+  /* ---- looking after him ---- */
+  /*
+   * The address everything else is built from.
+   *
+   * Whatever is typed into "Address your phone uses" wins, because the
+   * right answer depends on where the thing doing the asking is: this page
+   * might be open on localhost while the phone needs the LAN address, or a
+   * tunnel later. Falling back to wherever this page was served from is
+   * correct for the common case and wrong for exactly the case the field
+   * exists to fix.
+   */
+  function publicBase() {
+    var v = "";
+    try { v = localStorage.getItem("floweuy.publicbase") || ""; } catch (e) {}
+    v = v.trim().replace(/\/+$/, "");
+    if (v) return v;
+    if (location.protocol === "http:" || location.protocol === "https:") {
+      return location.origin;
+    }
+    return "";
+  }
+
+  function careBase() { return publicBase(); }
+
+  /* Filled in from the relay once signed in, so the URLs on this page are
+     ready to paste rather than needing the key pasted in by hand. */
+  var webhookKey = "";
+
+  function loadKey() {
+    fetch("/api/links", { credentials: "include" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (d && d.key) { webhookKey = d.key; renderParams(); }
+      })
+      .catch(function () {});
+  }
+
+  function wireCareLinks() {
+    var base = careBase();
+    $("tagUrl").textContent = (base || "http://<relay>:8080") + "/redirect";
+    var off = relayCfg.careEnabled === false;
+    ["linkWater", "linkHeal", "armWater", "armHeal"].forEach(function (id) {
+      var el = $(id);
+      el.style.opacity = off ? ".4" : "";
+      el.title = off ? "Looking after him is switched off" : (el.href || "");
+    });
+    [["linkWater", "/water"], ["linkHeal", "/heal"], ["linkPoison", "/poison"]]
+      .forEach(function (pair) {
+        var a = $(pair[0]);
+        a.href = base ? base + pair[1] : "#";
+        a.target = "_blank";
+        a.title = base ? a.href : "Set the relay address on the Brain tab first";
+      });
+  }
+
+  function renderCare(c) {
+    if (!c) return;
+    [["water", "barWater", "valWater"], ["determination", "barDet", "valDet"],
+     ["sunlight", "barSun", "valSun"]].forEach(function (t) {
+      var v = c[t[0]] | 0;
+      $(t[1]).style.width = v + "%";
+      $(t[1]).style.background = v < 30 ? "var(--bad)"
+                                        : (v < 60 ? "var(--warn)" : "var(--lcd-on)");
+      $(t[2]).textContent = v + "%";
+    });
+    $("careNote").textContent = c.poisoned
+      ? "He is poisoned. Open the heal page to stop it."
+      : "Below 30% each bar starts showing in what he writes.";
+  }
+
+  var BTN_MODES = [["0", "go back a line"], ["1", "nothing"],
+                   ["2", "run a routine"]];
+  var BTN_WHICH = [["L", "Left"], ["R", "Right"], ["X", "Both together"]];
+
+  function routineFor(which) {
+    relayCfg.buttonRoutines = relayCfg.buttonRoutines || [];
+    for (var i = 0; i < relayCfg.buttonRoutines.length; i++) {
+      if (relayCfg.buttonRoutines[i].which === which) {
+        return relayCfg.buttonRoutines[i];
+      }
+    }
+    var r = { which: which, mode: which === "L" ? 0 : 1, label: "",
+              webhook: "", enabled: true };
+    relayCfg.buttonRoutines.push(r);
+    return r;
+  }
+
+  function pushButtons() {
+    var msg = { op: "buttons" };
+    BTN_WHICH.forEach(function (w) {
+      var r = routineFor(w[0]);
+      msg[w[0] === "X" ? "LR" : w[0]] = { mode: r.mode | 0, label: r.label || "" };
+    });
+    pub(T.cmd, msg);
+    pushConfig();
+  }
+
+  function renderButtons() {
+    var host = $("btnRoutineList");
+    host.textContent = "";
+    BTN_WHICH.forEach(function (w) {
+      var r = routineFor(w[0]);
+      var box = document.createElement("div");
+      box.className = "rule";
+
+      var head = document.createElement("div");
+      head.className = "sentence";
+      var nm = document.createElement("strong");
+      nm.textContent = w[1];
+      head.appendChild(nm);
+      head.appendChild(sel(BTN_MODES, String(r.mode), function (v) {
+        r.mode = parseInt(v, 10); pushButtons(); renderButtons();
+      }));
+      box.appendChild(head);
+
+      if (r.mode === 2) {
+        var lbl = document.createElement("input");
+        lbl.maxLength = 16;
+        lbl.value = r.label || "";
+        lbl.placeholder = "what his screen says (16 chars)";
+        lbl.addEventListener("change", function () {
+          r.label = lbl.value; pushButtons();
+        });
+        box.appendChild(lbl);
+
+        var hook = document.createElement("input");
+        hook.value = r.webhook || "";
+        hook.placeholder = "webhook URL to POST to (optional)";
+        hook.addEventListener("change", function () {
+          r.webhook = hook.value; pushConfig();
+        });
+        box.appendChild(hook);
+      }
+      host.appendChild(box);
+    });
+  }
+
+  $("poisonSfx").addEventListener("change", function () {
+    relayCfg.poisonSfxSlot = parseInt($("poisonSfx").value, 10);
+    pushConfig();
+  });
+  $("poisonEvery").addEventListener("change", function () {
+    relayCfg.poisonEveryMin = parseInt($("poisonEvery").value, 10) || 10;
+    pushConfig();
+  });
+
+  /* ---- firmware ---- */
+  $("btnUpdate").addEventListener("click", function () {
+    var url = $("updateUrl").value.trim();
+    if (!url) { toast("Where from?"); return; }
+    try { localStorage.setItem("floweuy.otaurl", url); } catch (e) {}
+    if (pub(T.cmd, { op: "update", url: url })) {
+      $("otaNote").textContent = "Asked him to check...";
+    }
+  });
+  try {
+    var savedUrl = localStorage.getItem("floweuy.otaurl");
+    if (savedUrl) $("updateUrl").value = savedUrl;
+  } catch (e) {}
+
+  /* ---- idle timeout ---- */
+  var idleMins = 8;
+  var IDLE_STEPS = [0, 1, 2, 5, 8, 15, 30, 60, 120];
+  function showIdle() {
+    $("idleVal").textContent = idleMins ? idleMins + " min" : "never";
+  }
+  function stepIdle(dir) {
+    var best = 0;
+    for (var i = 0; i < IDLE_STEPS.length; i++) {
+      if (IDLE_STEPS[i] <= idleMins) best = i;
+    }
+    best = Math.max(0, Math.min(IDLE_STEPS.length - 1, best + dir));
+    idleMins = IDLE_STEPS[best];
+    showIdle();
+    pub(T.cmd, { op: "idle", mins: idleMins });
+  }
+  $("btnIdleDown").addEventListener("click", function () { stepIdle(-1); });
+  $("btnIdleUp").addEventListener("click", function () { stepIdle(1); });
+  $("tabBrain").addEventListener("click",   function () { showTab("brain"); });
+
+  /* ---- the log ---- */
+  /* ------------------------------------------------ the history ----
+   *
+   * Every line he has said, every button pressed, every time he was looked
+   * after, and what came of each one. The relay keeps the clock and the
+   * screens; this draws them.
+   *
+   * One colour and one icon per kind of thing, so a month of history can be
+   * skimmed without reading it.
+   */
+  var ICONS = {
+    script:  '<path d="M4 5h16v11H8l-4 4z"/>',
+    choice:  '<path d="M6 3v6a4 4 0 0 0 4 4h8"/><path d="M15 10l3 3-3 3"/><path d="M6 21v-4"/>',
+    back:    '<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10H9"/>',
+    button:  '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+    water:   '<path d="M12 3s7 8 7 12a7 7 0 0 1-14 0c0-4 7-12 7-12z"/>',
+    heal:    '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 10"/>',
+    poison:  '<path d="M12 3l9 16H3l9-16z"/><path d="M12 10v4"/><path d="M12 16.5v.5"/>',
+    rest:    '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+    online:  '<path d="M5 12.5a10 10 0 0 1 14 0"/><path d="M8.5 16a5 5 0 0 1 7 0"/><path d="M12 19.5v.01"/>',
+    offline: '<path d="M5 12.5a10 10 0 0 1 14 0"/><path d="M12 19.5v.01"/><path d="M3 3l18 18"/>'
+  };
+
+  function icon(kind) {
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "ic");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.9");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    svg.innerHTML = ICONS[kind] || ICONS.button;
+    return svg;
+  }
+
+  /* Watering, healing and poisoning all arrive as "care"; they are three
+     different events to anyone reading the log, so they get split here. */
+  function evKind(x) {
+    if (x.kind !== "care") return x.kind;
+    var t = (x.text || "").toLowerCase();
+    if (t.indexOf("poison") === 0) return "poison";
+    if (t.indexOf("water") === 0) return "water";
+    if (t.indexOf("heal") === 0) return "heal";
+    return "heal";
+  }
+
+  var SOURCE_WORD = {
+    "default": "wrote it himself", now: "played at once",
+    queued: "queued", notify: "notification"
+  };
+
+  function plural(n, word) {
+    return n + " " + word + (n === 1 ? "" : "s");
+  }
+
+  /*
+   * What he actually said, rebuilt from the screens.
+   *
+   * A sentence is laid out over as many screens as it needs, so the opening
+   * line is the first screen's two rows put back together. Using it as the
+   * row title turns a page of "Said something" into a page you can read.
+   */
+  function opening(screens) {
+    if (!screens || !screens.length) return "";
+    var r = screens[0];
+    var t = (r[0] || "").trim(), b = (r[1] || "").trim();
+    var line = (t + " " + b).replace(/\s+/g, " ").trim();
+    return line.length > 64 ? line.slice(0, 63) + "\u2026" : line;
+  }
+
+  /* title, detail, action - the three things each row has to answer:
+     what happened, to what, and what came of it. */
+  function evParts(x) {
+    var k = evKind(x);
+    if (k === "script") {
+      var said = opening(x.screens);
+      return [said ? "\u201c" + said + "\u201d" : "Said something",
+              /* Scripts the relay never sent - his built-in farewell, say -
+                 have no screens recorded, so the name is all there is. */
+              x.text || "",
+              (x.steps ? plural(x.steps | 0, "line") : "played")];
+    }
+    if (k === "choice") {
+      return ["Answered a question",
+              x.question ? '"' + x.question + '"' : (x.script || ""),
+              "chose " + (x.text || "?")];
+    }
+    if (k === "back") {
+      return ["Went back a line", x.script || "", "repeated"];
+    }
+    if (k === "button") {
+      var which = { L: "Left button", R: "Right button",
+                    X: "Both buttons" }[x.which] || "Button";
+      if (x.error) return [which, String(x.error), "webhook failed"];
+      return [which, x.text && x.text !== x.which ? '"' + x.text + '"' : "",
+              "routine ran"];
+    }
+    if (k === "water") return ["Watered", x.text || "", "topped up"];
+    if (k === "heal") {
+      var was = (x.text || "").indexOf("was not") === -1;
+      return ["Healed", x.text || "", was ? "cured" : "nothing to do"];
+    }
+    if (k === "poison") return ["Poisoned", x.text || "", "feeling ill"];
+    if (k === "rest") {
+      /* -1 is the device saying there was nothing part-finished to come
+         back to, which is not a line number and should not read like one. */
+      var at = x.resumeAt;
+      return ["Went to sleep", x.script ? "during " + x.script : "",
+              (at != null && at >= 0) ? "resumes at line " + (at + 1)
+                                      : "nothing to resume"];
+    }
+    if (k === "online") return ["Came back online", "", "reachable"];
+    if (k === "offline") return ["Stopped responding", "", "unreachable"];
+    return [x.kind, x.text || "", ""];
+  }
+
+  function pad16(t) { return (String(t || "") + "                ").slice(0, 16); }
+
+  /* A screen as he drew it: sixteen columns, two rows, dots for the blanks
+     so the shape of the layout is visible rather than guessed at. */
+  function lcdMini(row) {
+    var el = document.createElement("div");
+    el.className = "lcdmini";
+    [0, 1].forEach(function (i) {
+      var line = document.createElement("div");
+      var txt = pad16(row[i]);
+      line.appendChild(document.createTextNode(txt.replace(/ +$/, "")));
+      var padn = txt.length - txt.replace(/ +$/, "").length;
+      if (padn) {
+        var dots = document.createElement("i");
+        dots.textContent = new Array(padn + 1).join("\u00b7");
+        line.appendChild(dots);
+      }
+      el.appendChild(line);
+    });
+    if (row.length > 2 && (row[2] || row[3])) {
+      var o = document.createElement("div");
+      o.className = "opts";
+      o.textContent = "[ " + (row[2] || "") + " ]   [ " + (row[3] || "") + " ]";
+      el.appendChild(o);
+    }
+    return el;
+  }
+
+  function screenList(screens, openByDefault) {
+    var box = document.createElement("div");
+    box.className = "lcdlist" + (openByDefault ? " open" : "");
+    screens.forEach(function (r) { box.appendChild(lcdMini(r)); });
+    return box;
+  }
+
+  /*
+   * Which entries are open, and how far down the list we were.
+   *
+   * The whole feed is rebuilt whenever anything is logged, which is often.
+   * Without remembering these two things, a script you had opened to read
+   * would snap shut - and the list would jump back to the top - the moment
+   * he did anything at all.
+   */
+  var logOpen = {};
+
+  function logKey(x) { return (x.at || "") + "|" + (x.text || ""); }
+
+  function renderLog(d) {
+    var host = $("logFeed");
+    var wasAt = host.scrollTop;
+    host.textContent = "";
+    var entries = (d.entries || []).slice().reverse();
+    if (!entries.length) {
+      var p = document.createElement("p");
+      p.className = "note";
+      p.textContent = "Nothing logged yet.";
+      host.appendChild(p);
+    }
+
+    entries.forEach(function (x) {
+      var k = evKind(x);
+      var parts = evParts(x);
+      var row = document.createElement("div");
+      row.className = "ev k-" + k;
+
+      var at = document.createElement("span");
+      at.className = "at";
+      var dt = new Date(x.at);
+      at.textContent = isNaN(dt) ? "" :
+        dt.toLocaleString([], { day: "2-digit", month: "short",
+                                hour: "2-digit", minute: "2-digit" });
+      row.appendChild(at);
+      row.appendChild(icon(k));
+
+      var mid = document.createElement("div");
+      mid.className = "mid";
+      var ttl = document.createElement("div");
+      ttl.className = "ttl";
+      ttl.textContent = parts[0];
+      mid.appendChild(ttl);
+      if (parts[1]) {
+        var sub = document.createElement("div");
+        sub.className = "sub";
+        sub.textContent = parts[1] +
+          (x.source ? "  \u00b7  " + (SOURCE_WORD[x.source] || x.source) : "");
+        mid.appendChild(sub);
+      }
+
+      if (x.screens && x.screens.length) {
+        var btn = document.createElement("button");
+        btn.className = "more";
+        var list = screenList(x.screens, false);
+        var shut = "show all " + plural(x.screens.length, "screen");
+        var key = logKey(x);
+        if (logOpen[key]) { list.classList.add("open"); }
+        btn.textContent = logOpen[key] ? "hide" : shut;
+        btn.addEventListener("click", function () {
+          var open = list.classList.toggle("open");
+          logOpen[key] = open;
+          btn.textContent = open ? "hide" : shut;
+        });
+        mid.appendChild(btn);
+        mid.appendChild(list);
+      }
+      row.appendChild(mid);
+
+      if (parts[2]) {
+        var act = document.createElement("span");
+        act.className = "act";
+        act.textContent = parts[2];
+        row.appendChild(act);
+      }
+      host.appendChild(row);
+    });
+
+    host.scrollTop = wasAt;
+
+    if (d.online != null) {
+      $("onlineDot").className = "dot " + (d.online ? "ok" : "bad");
+      $("onlineText").textContent = d.online ? "Flowey is online" : "Flowey is offline";
+    }
+  }
+
+  /* ------------------------------------------------- what is coming ----
+   *
+   * The device only holds one script at a time, so "the queue" really lives
+   * on the relay: what it has sent and not yet heard him start, plus the
+   * standing script he falls back to on waking. Showing the dialogue here
+   * means a freshly written one can be read before he ever says it.
+   */
+  var QUEUE_TAG = {
+    now: "playing now", queued: "queued", notify: "notification",
+    "default": "on waking"
+  };
+
+  function renderQueue(q) {
+    var host = $("queueList");
+    host.textContent = "";
+    var items = (q && q.items) || [];
+
+    if (q && q.generating) {
+      var w = document.createElement("div");
+      w.className = "qitem";
+      var hd = document.createElement("div");
+      hd.className = "qhead";
+      var sp = document.createElement("span");
+      sp.className = "spin";
+      var nm = document.createElement("span");
+      nm.className = "nm";
+      nm.textContent = "Writing a new one\u2026";
+      hd.appendChild(sp); hd.appendChild(nm);
+      w.appendChild(hd);
+      host.appendChild(w);
+    }
+
+    if (!items.length) {
+      if (!(q && q.generating)) {
+        var p = document.createElement("p");
+        p.className = "note";
+        p.textContent = "Nothing waiting. He will say whatever he has to hand.";
+        host.appendChild(p);
+      }
+      $("qCount").textContent = "";
+      return;
+    }
+
+    $("qCount").textContent = plural(items.length, "script") + " waiting";
+
+    items.forEach(function (it, i) {
+      var box = document.createElement("div");
+      box.className = "qitem" + (i === 0 && it.kind !== "default" ? " now" : "");
+
+      var hd = document.createElement("div");
+      hd.className = "qhead";
+      var pos = document.createElement("span");
+      pos.className = "pos";
+      pos.textContent = (i + 1) + ".";
+      var nm = document.createElement("span");
+      nm.className = "nm";
+      nm.textContent = it.name || "(unnamed)";
+      var tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = QUEUE_TAG[it.kind] || it.kind ||
+        (it.when === "on waking" ? "on waking" : "waiting");
+      hd.appendChild(pos); hd.appendChild(nm); hd.appendChild(tag);
+      box.appendChild(hd);
+
+      if (it.screens && it.screens.length) {
+        box.appendChild(screenList(it.screens, true));
+      }
+      host.appendChild(box);
+    });
+  }
+
+  /* ---- what the relay has recorded ----
+   * The relay does the counting and publishes the whole picture retained, so
+   * opening this page on a new device shows the full history immediately
+   * rather than only what happens from now on.
+   */
+  var LABELS = {
+    app_opens: "opens", alarm_snoozed: "snoozes", deleted_text: "deletions",
+    sleep_check: "late nights", battery: "low battery"
+  };
+
+  function prettyEvent(ev, subject) {
+    var noun = LABELS[ev] || ev.replace(/_/g, " ");
+    if (subject && subject !== "_") {
+      return subject.charAt(0).toUpperCase() + subject.slice(1);
+    }
+    return noun.charAt(0).toUpperCase() + noun.slice(1);
+  }
+
+  function renderTracking(t) {
+    var tiles = $("trackTiles");
+    tiles.textContent = "";
+    var counters = (t && t.counters) || {};
+    var any = false;
+
+    Object.keys(counters).sort().forEach(function (ev) {
+      Object.keys(counters[ev]).sort().forEach(function (subject) {
+        var rec = counters[ev][subject];
+        any = true;
+        var tile = document.createElement("div");
+        tile.className = "tile";
+
+        var big = document.createElement("span");
+        big.className = "big";
+        big.textContent = rec.day || 0;
+
+        var lbl = document.createElement("span");
+        lbl.className = "lbl";
+        lbl.textContent = prettyEvent(ev, subject);
+
+        var sub = document.createElement("span");
+        sub.className = "sub";
+        sub.textContent = (LABELS[ev] || "today") + " \u00b7 " + (rec.total || 0) + " all time";
+
+        tile.appendChild(big); tile.appendChild(lbl); tile.appendChild(sub);
+
+        // Fourteen days of history, today on the right.
+        var hist = rec.history || {};
+        var days = Object.keys(hist).sort().slice(-13);
+        if (days.length) {
+          var vals = days.map(function (d) { return hist[d]; }).concat([rec.day || 0]);
+          var max = Math.max.apply(null, vals.concat([1]));
+          var spark = document.createElement("span");
+          spark.className = "spark";
+          vals.forEach(function (v, i) {
+            var bar = document.createElement("i");
+            bar.style.height = Math.max(2, Math.round((v / max) * 26)) + "px";
+            if (i === vals.length - 1) bar.className = "today";
+            bar.title = v + "";
+            spark.appendChild(bar);
+          });
+          tile.appendChild(spark);
+        }
+        tiles.appendChild(tile);
+      });
+    });
+
+    if (!any) {
+      var empty = document.createElement("p");
+      empty.className = "note";
+      empty.textContent = "Nothing recorded yet. Fire a Shortcut and it will appear here.";
+      tiles.appendChild(empty);
+    }
+
+    $("trackNote").textContent = t && t.updated
+      ? "Last event " + new Date(t.updated).toLocaleString()
+      : "Waiting for the relay.";
+
+    // activity feed, newest first
+    var feed = $("trackFeed");
+    feed.textContent = "";
+    var recent = ((t && t.recent) || []).slice().reverse();
+    if (!recent.length) {
+      var n = document.createElement("p");
+      n.className = "note";
+      n.textContent = "No events yet.";
+      feed.appendChild(n);
+    }
+    recent.forEach(function (e) {
+      var row = document.createElement("div");
+      row.className = "feedrow" + ((e.count | 0) >= 20 ? " hot" : "");
+      var when = document.createElement("span");
+      when.className = "when";
+      var d = new Date(e.at);
+      when.textContent = isNaN(d) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      var what = document.createElement("span");
+      what.className = "what";
+      what.textContent = prettyEvent(e.event, e.subject) +
+        (e.subject && e.subject !== "_" ? " " + (LABELS[e.event] || e.event.replace(/_/g, " ")) : "");
+      var num = document.createElement("span");
+      num.className = "n";
+      num.textContent = "#" + (e.count || 1);
+      row.appendChild(when); row.appendChild(what); row.appendChild(num);
+      feed.appendChild(row);
+    });
+
+    // queued hints
+    var hl = $("trackHints");
+    hl.textContent = "";
+    var hints = (t && t.facts) ? [] : [];
+    hints = (window.__hints || []);
+    if (!hints.length) {
+      var h = document.createElement("p");
+      h.className = "note";
+      h.textContent = "Nothing queued. Facts land here when a weave rule fires.";
+      hl.appendChild(h);
+      return;
+    }
+    hints.forEach(function (x) {
+      var row = document.createElement("div");
+      row.className = "listrow";
+      var nm = document.createElement("span");
+      nm.className = "nm"; nm.textContent = x;
+      row.appendChild(nm); hl.appendChild(row);
+    });
+  }
+
+  /* ---- relay configuration ----
+   * The relay subscribes to this topic, retained, so it picks the settings up
+   * on its next start without anything else having to be running now.
+   */
+  var relayCfg = {
+    aiDefault: true, customDefaultId: null, mentionTracking: true,
+    provider: "gemini", model: "", temperature: 1.0, regenerateOnRest: true,
+    parameters: [], topics: [],
+    careEnabled: true, scaryEnabled: true,
+    minRegenMinutes: 3, rules: []
+  };
+  var cfgLoaded = false;
+
+  function pushConfig() {
+    if (!client || !client.connected) { toast("Not connected"); return; }
+    client.publish(T.config, JSON.stringify(relayCfg), { qos: 1, retain: true });
+  }
+
+  /* ---- parameters: name it, point a webhook at it ---- */
+  function slugify(name) {
+    return (name || "").toLowerCase().replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "").slice(0, 28) || "thing";
+  }
+
+  function relayBase() {
+    return publicBase() || "http://YOUR-RELAY:8080";
+  }
+
+  function showBase() {
+    var v = "";
+    try { v = localStorage.getItem("floweuy.publicbase") || ""; } catch (e) {}
+    $("publicBase").value = v;
+    var b = publicBase();
+    var note = $("baseNote");
+    if (!b) {
+      note.textContent = "Not set. Type the address you would use in Safari " +
+        "on your phone.";
+    } else if (/^https?:\/\/(127\.0\.0\.1|localhost)/.test(b)) {
+      note.textContent = b + " - this only works on this computer. Your " +
+        "phone needs the LAN address instead.";
+    } else if (/^http:\/\/(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(b)) {
+      note.textContent = b + " - works on your home WiFi only.";
+    } else {
+      note.textContent = b + " - should work from anywhere.";
+    }
+  }
+
+  function saveBase(v) {
+    try { localStorage.setItem("floweuy.publicbase", (v || "").trim()); }
+    catch (e) {}
+    showBase();
+    renderParams();
+    wireCareLinks();
+  }
+
+  function renderParams() {
+    var host = $("paramList");
+    host.textContent = "";
+    var params = relayCfg.parameters || [];
+    if (!params.length) {
+      var e = document.createElement("p");
+      e.className = "note";
+      e.textContent = "Nothing tracked yet. Name something below and it exists.";
+      host.appendChild(e);
+      return;
+    }
+    params.forEach(function (p, i) {
+      var box = document.createElement("div");
+      box.className = "rule";
+
+      var head = document.createElement("div");
+      head.className = "sentence";
+      var nm = document.createElement("strong");
+      nm.textContent = p.name || p.event;
+      var tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = ({count: "counted", flag: "yes/no", value: "value"})[p.mode] || p.mode;
+      var reset = document.createElement("span");
+      reset.className = "tag";
+      reset.textContent = !p.resetHours ? "daily"
+        : (p.resetHours < 0 ? "never resets" : "every " + p.resetHours + "h");
+      var spacer = document.createElement("span"); spacer.className = "grow";
+      var del = mkBtn("\u2715", "Remove", function () {
+        relayCfg.parameters.splice(i, 1); pushConfig(); renderParams(); renderRules();
+      });
+      del.className = "tiny danger";
+      head.appendChild(nm); head.appendChild(tag); head.appendChild(reset);
+      head.appendChild(spacer); head.appendChild(del);
+      box.appendChild(head);
+
+      var url = relayBase() + "/t/" + p.event +
+                "?key=" + (webhookKey || "YOUR_KEY") +
+                (p.multiple ? "&app=instagram" : "");
+      var mono = document.createElement("div");
+      mono.className = "mono";
+      mono.textContent = url;
+      box.appendChild(mono);
+
+      var copy = document.createElement("div");
+      copy.className = "barrow";
+      copy.appendChild(mkBtn("Copy URL", "Copy the webhook address", function () {
+        try {
+          navigator.clipboard.writeText(url).then(
+            function () { toast("Copied"); },
+            function () { selectText(mono); });
+        } catch (e) { selectText(mono); }
+      }));
+      box.appendChild(copy);
+      host.appendChild(box);
+    });
+  }
+
+  function selectText(el) {
+    try {
+      var r = document.createRange(); r.selectNodeContents(el);
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      toast("Select and copy");
+    } catch (e) {}
+  }
+
+  $("btnAddParam").addEventListener("click", function () {
+    var name = $("newParamName").value.trim();
+    if (!name) { toast("Give it a name"); return; }
+    relayCfg.parameters = relayCfg.parameters || [];
+    var reset = parseInt($("newParamReset").value, 10);
+    relayCfg.parameters.push({
+      event: slugify(name),
+      name: name,
+      mode: $("newParamMode").value,
+      resetHours: reset,
+      multiple: $("newParamMulti").checked
+    });
+    $("newParamName").value = "";
+    $("newParamMulti").checked = false;
+    pushConfig(); renderParams(); renderRules();
+    toast("Tracking " + name);
+  });
+
+  /* ---- automations: if this, then that ---- */
+  var ACTIONS = [
+    ["weave", "mention it in his next script"],
+    ["interrupt", "interrupt and say"],
+    ["queue", "say it after the current script"],
+    ["notify", "wait quietly until a button is pressed"]
+  ];
+
+  function sel(options, value, onChange) {
+    var el = document.createElement("select");
+    options.forEach(function (o) {
+      var opt = document.createElement("option");
+      opt.value = o[0]; opt.textContent = o[1];
+      el.appendChild(opt);
+    });
+    el.value = value;
+    el.addEventListener("change", function () { onChange(el.value); });
+    return el;
+  }
+
+  function renderRules() {
+    var host = $("ruleList");
+    host.textContent = "";
+    if (!relayCfg.rules.length) {
+      var empty = document.createElement("p");
+      empty.className = "note";
+      empty.textContent = "No automations yet.";
+      host.appendChild(empty);
+      return;
+    }
+
+    var events = (relayCfg.parameters || []).map(function (p) {
+      return [p.event, p.name || p.event];
+    });
+    if (!events.length) events = [["app_opens", "app_opens"]];
+
+    relayCfg.rules.forEach(function (r, i) {
+      var box = document.createElement("div");
+      box.className = "rule" + (r.enabled === false ? " off" : "");
+
+      // header: enable + name + delete
+      var head = document.createElement("div");
+      head.className = "sentence";
+      var cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = r.enabled !== false; cb.id = "ren" + i;
+      cb.addEventListener("change", function () {
+        r.enabled = cb.checked; pushConfig(); renderRules();
+      });
+      var nameIn = document.createElement("input");
+      nameIn.className = "grow"; nameIn.maxLength = 24;
+      nameIn.value = r.name || ""; nameIn.placeholder = "Name this automation";
+      nameIn.addEventListener("change", function () { r.name = nameIn.value; pushConfig(); });
+      var del = mkBtn("\u2715", "Delete", function () {
+        relayCfg.rules.splice(i, 1); pushConfig(); renderRules();
+      });
+      del.className = "tiny danger";
+      head.appendChild(cb); head.appendChild(nameIn); head.appendChild(del);
+      box.appendChild(head);
+
+      // IF <event> <comparison> <value>
+      var ifRow = document.createElement("div");
+      ifRow.className = "sentence";
+      var kw = document.createElement("span"); kw.className = "kw"; kw.textContent = "if";
+      ifRow.appendChild(kw);
+      ifRow.appendChild(sel(events, r.event || events[0][0], function (v) {
+        r.event = v; pushConfig();
+      }));
+
+      var when = r.when || {};
+      var cmp = when.count && when.count.gte != null ? "gte"
+              : (when.count && when.count.lte != null ? "lte" : "any");
+      var cmpSel = sel([["any", "happens at all"],
+                        ["gte", "reaches at least"],
+                        ["lte", "is at most"]], cmp, function (v) {
+        if (v === "any") { delete r.when; }
+        else {
+          r.when = r.when || {};
+          var n = parseInt((numIn && numIn.value) || "1", 10) || 1;
+          r.when.count = {}; r.when.count[v] = n;
+        }
+        pushConfig(); renderRules();
+      });
+      ifRow.appendChild(cmpSel);
+
+      var numIn = null;
+      if (cmp !== "any") {
+        numIn = document.createElement("input");
+        numIn.className = "num"; numIn.type = "number"; numIn.min = "1";
+        numIn.value = when.count[cmp];
+        numIn.addEventListener("change", function () {
+          r.when = r.when || {}; r.when.count = {};
+          r.when.count[cmp] = parseInt(numIn.value, 10) || 1;
+          pushConfig();
+        });
+        ifRow.appendChild(numIn);
+        var times = document.createElement("span");
+        times.className = "kw"; times.textContent = "times";
+        ifRow.appendChild(times);
+      }
+      box.appendChild(ifRow);
+
+      // THEN <action>
+      var thenRow = document.createElement("div");
+      thenRow.className = "sentence";
+      var kw2 = document.createElement("span"); kw2.className = "kw"; kw2.textContent = "then";
+      thenRow.appendChild(kw2);
+      thenRow.appendChild(sel(ACTIONS, r.action || "weave", function (v) {
+        r.action = v; pushConfig(); renderRules();
+      }));
+      var kw3 = document.createElement("span"); kw3.className = "kw";
+      kw3.textContent = "at most every";
+      var cool = document.createElement("input");
+      cool.className = "num"; cool.type = "number"; cool.min = "0";
+      cool.value = r.cooldownMin == null ? 0 : r.cooldownMin;
+      cool.addEventListener("change", function () {
+        r.cooldownMin = parseInt(cool.value, 10) || 0; pushConfig();
+      });
+      var mins = document.createElement("span"); mins.className = "kw"; mins.textContent = "min";
+      thenRow.appendChild(kw3); thenRow.appendChild(cool); thenRow.appendChild(mins);
+      box.appendChild(thenRow);
+
+      if ((r.action || "weave") === "weave") {
+        var hint = document.createElement("input");
+        hint.placeholder = "what to tell him, e.g. they opened instagram {count} times";
+        hint.value = r.hint || "";
+        hint.addEventListener("change", function () { r.hint = hint.value; pushConfig(); });
+        box.appendChild(hint);
+      } else {
+        r.lines = r.lines || [["", ""]];
+        r.lines.forEach(function (ln, li) {
+          var lr = document.createElement("div");
+          lr.className = "lcdline";
+          [0, 1].forEach(function (half) {
+            var inp = document.createElement("input");
+            inp.maxLength = 16; inp.value = ln[half] || "";
+            inp.placeholder = half ? "bottom row" : "top row";
+            inp.addEventListener("input", function () {
+              ln[half] = inp.value; saveLocal();
+            });
+            inp.addEventListener("change", pushConfig);
+            lr.appendChild(inp);
+          });
+          var rm = mkBtn("\u2715", "Remove line", function () {
+            r.lines.splice(li, 1); pushConfig(); renderRules();
+          });
+          rm.className = "tiny danger";
+          lr.appendChild(rm);
+          box.appendChild(lr);
+        });
+        var add = document.createElement("div");
+        add.className = "barrow";
+        add.appendChild(mkBtn("+ line", "Add a line", function () {
+          r.lines.push(["", ""]); pushConfig(); renderRules();
+        }));
+        var dreadSel = sel([["0", "calm"], ["1", "scary"], ["2", "more scary"],
+                            ["3", "most scary"]], String(r.dread == null ? 2 : r.dread),
+                           function (v) { r.dread = parseInt(v, 10); pushConfig(); });
+        add.appendChild(dreadSel);
+        var sfxSel = sel([["", "no sound"], ["0", "sound 1"], ["1", "sound 2"],
+                          ["2", "sound 3"], ["3", "sound 4"]],
+                         r.sfx == null ? "" : String(r.sfx), function (v) {
+          if (v === "") delete r.sfx; else r.sfx = parseInt(v, 10);
+          pushConfig();
+        });
+        add.appendChild(sfxSel);
+        box.appendChild(add);
+      }
+
+      host.appendChild(box);
+    });
+  }
+
+  $("btnAddRule").addEventListener("click", function () {
+    var events = (relayCfg.parameters || []);
+    relayCfg.rules.push({
+      id: "r" + Math.random().toString(36).slice(2, 7),
+      name: "New automation",
+      enabled: true,
+      event: events.length ? events[0].event : "app_opens",
+      action: "weave",
+      cooldownMin: 60,
+      hint: ""
+    });
+    pushConfig(); renderRules();
+  });
+
+  function renderCustomDefaults() {
+    var sel = $("selCustomDefault");
+    sel.textContent = "";
+    var none = document.createElement("option");
+    none.value = ""; none.textContent = "(built-in script)";
+    sel.appendChild(none);
+    lib.scripts.forEach(function (sc) {
+      var o = document.createElement("option");
+      o.value = sc.id; o.textContent = sc.name;
+      sel.appendChild(o);
+    });
+    sel.value = relayCfg.customDefaultId || "";
+    sel.disabled = !!relayCfg.aiDefault;
+  }
+
+  var keyAsked = false;
+
+  function renderBrain() {
+    /* Once, when the config first arrives and the page is known to be up. */
+    if (!keyAsked) { keyAsked = true; loadKey(); }
+    renderParams();
+    renderTopics();
+    showBase();
+    showPace();
+    showIdle();
+    renderButtons();
+    wireCareLinks();
+    $("poisonSfx").value = String(relayCfg.poisonSfxSlot || 0);
+    $("poisonEvery").value = relayCfg.poisonEveryMin || 10;
+    $("cbAiDefault").checked = !!relayCfg.aiDefault;
+    $("cbMention").checked = !!relayCfg.mentionTracking;
+    $("cbCare").checked = relayCfg.careEnabled !== false;
+    $("cbScary").checked = relayCfg.scaryEnabled !== false;
+    showScary();
+    $("selProvider").value = relayCfg.provider || "gemini";
+    $("inModel").value = relayCfg.model || "";
+    $("inModel").placeholder = PROVIDER_DEFAULT[relayCfg.provider || "gemini"];
+    $("providerNote").textContent = PROVIDER_NOTE[relayCfg.provider || "gemini"];
+    renderCustomDefaults();
+    renderRules();
+  }
+
+  $("cbRealOff").addEventListener("change", function () {
+    // This one is the device, not the relay.
+    pub(T.cmd, { op: "realoff", on: $("cbRealOff").checked });
+    toast($("cbRealOff").checked ? "Switch now really turns him off"
+                                 : "Switch is pretend again");
+  });
+
+  $("cbAiDefault").addEventListener("change", function () {
+    relayCfg.aiDefault = $("cbAiDefault").checked;
+    renderCustomDefaults();
+    pushConfig();
+    // When generation is off, the chosen script becomes the default right now.
+    if (!relayCfg.aiDefault && relayCfg.customDefaultId) {
+      var sc = lib.scripts.filter(function (x) { return x.id === relayCfg.customDefaultId; })[0];
+      if (sc) pub(T.def, wire(sc), true);
+    }
+  });
+
+  $("publicBase").addEventListener("change", function () {
+    saveBase($("publicBase").value);
+  });
+  $("btnBaseNow").addEventListener("click", function () {
+    /* Whatever address this page was opened at is, by definition, one that
+       reaches the relay from a device on this network. */
+    saveBase(location.origin);
+    toast("Using " + location.origin);
+  });
+
+  $("cbCare").addEventListener("change", function () {
+    relayCfg.careEnabled = $("cbCare").checked;
+    pushConfig();
+    wireCareLinks();
+    toast(relayCfg.careEnabled ? "He needs looking after again"
+                               : "He looks after himself now");
+  });
+
+  $("cbScary").addEventListener("change", function () {
+    relayCfg.scaryEnabled = $("cbScary").checked;
+    pushConfig();
+    showScary();
+    toast(relayCfg.scaryEnabled ? "He can be unsettling again"
+                                : "Sweet all the way down");
+  });
+
+  function showScary() {
+    var on = relayCfg.scaryEnabled !== false;
+    $("scaryNote").textContent = on
+      ? ""
+      : "While this is off, Mention tracking below has no effect - nothing " +
+        "tracked reaches the model either way.";
+    /* Saying it twice is clearer than leaving a switch that silently does
+       nothing, so the one it overrides is visibly out of action. */
+    $("cbMention").disabled = !on;
+    $("cbMention").parentNode.style.opacity = on ? "" : ".45";
+  }
+
+  /* ---- the one tag ---- */
+  function armLabel(a) {
+    return a ? ("armed: " + a + " - next tap") : "nothing chosen";
+  }
+
+  function showArm(a) {
+    $("armState").textContent = armLabel(a);
+    $("armState").style.color = a ? "var(--lcd-on)" : "";
+  }
+
+  function setArm(what) {
+    var base = careBase();
+    if (!base) { toast("Set the relay address on the Brain tab first"); return; }
+    fetch(base + "/api/arm", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: what })
+    }).then(function (r) { return r.json(); })
+      .then(function (d) {
+        showArm(d.armed || "");
+        toast(d.armed ? ("Tap him to " + d.armed) : "Tag cleared");
+      })
+      .catch(function () { toast("Could not reach the relay"); });
+  }
+
+  $("armWater").addEventListener("click", function () { setArm("water"); });
+  $("armHeal").addEventListener("click", function () { setArm("heal"); });
+  $("armPoison").addEventListener("click", function () { setArm("poison"); });
+  $("armNone").addEventListener("click", function () { setArm(""); });
+
+  function pollArm() {
+    var base = careBase();
+    if (!base) return;
+    fetch(base + "/api/home", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { showArm(d.armed || ""); })
+      .catch(function () {});
+  }
+  setInterval(function () {
+    if (!$("paneCare").hidden) pollArm();
+  }, 4000);
+
+  $("cbMention").addEventListener("change", function () {
+    relayCfg.mentionTracking = $("cbMention").checked;
+    pushConfig();
+    toast(relayCfg.mentionTracking ? "He can mention what he knows"
+                                   : "Still tracking, just not saying");
+  });
+
+  var PROVIDER_DEFAULT = {
+    gemini: "gemini-flash-lite-latest",
+    ollama: "llama3.2",
+    groq: "llama-3.3-70b-versatile",
+    openrouter: "meta-llama/llama-3.3-70b-instruct:free"
+  };
+  var PROVIDER_NOTE = {
+    gemini: "Free tier at aistudio.google.com/apikey. No card. The prompt, " +
+            "including your tracking facts, goes to Google.",
+    ollama: "Runs on the machine hosting the relay. Nothing leaves the house " +
+            "- the only option where deleted words and app counts stay private.",
+    groq: "Free tier at console.groq.com. Open-weight models, very fast. " +
+          "The prompt goes to Groq.",
+    openrouter: "Free models at openrouter.ai. Whoever serves the model sees " +
+                "the prompt."
+  };
+
+  $("selProvider").addEventListener("change", function () {
+    relayCfg.provider = $("selProvider").value;
+    relayCfg.model = "";                  // its default, not the last one's
+    $("inModel").value = "";
+    $("inModel").placeholder = PROVIDER_DEFAULT[relayCfg.provider];
+    $("providerNote").textContent = PROVIDER_NOTE[relayCfg.provider];
+    pushConfig();
+    toast("Writer set to " + relayCfg.provider);
+  });
+  $("inModel").addEventListener("change", function () {
+    relayCfg.model = $("inModel").value.trim(); pushConfig();
+  });
+
+  $("selCustomDefault").addEventListener("change", function () {
+    relayCfg.customDefaultId = $("selCustomDefault").value || null;
+    pushConfig();
+    var sc = lib.scripts.filter(function (x) { return x.id === relayCfg.customDefaultId; })[0];
+    if (sc && !relayCfg.aiDefault) { pub(T.def, wire(sc), true); toast("Default set"); }
+  });
+
+  $("btnGenNow").addEventListener("click", function () {
+    if (pub(T.gen, { at: Date.now() })) toast("Asked the relay for a new script");
+  });
+
+  $("btnRulesEdit").addEventListener("click", function () {
+    $("rulesJson").value = JSON.stringify(relayCfg.rules, null, 2);
+    ["rulesJson", "btnRulesSave", "btnRulesCancel"].forEach(function (id) { $(id).hidden = false; });
+    $("btnRulesEdit").hidden = true;
+  });
+  $("btnRulesCancel").addEventListener("click", function () {
+    ["rulesJson", "btnRulesSave", "btnRulesCancel"].forEach(function (id) { $(id).hidden = true; });
+    $("btnRulesEdit").hidden = false;
+  });
+  $("btnRulesSave").addEventListener("click", function () {
+    try {
+      var parsed = JSON.parse($("rulesJson").value);
+      if (!Array.isArray(parsed)) throw new Error("expected a list of rules");
+      relayCfg.rules = parsed;
+      pushConfig(); renderRules();
+      ["rulesJson", "btnRulesSave", "btnRulesCancel"].forEach(function (id) { $(id).hidden = true; });
+      $("btnRulesEdit").hidden = false;
+      toast(parsed.length + " rules saved");
+    } catch (e) {
+      $("ruleNote").textContent = "That is not valid JSON: " + (e.message || e);
+    }
+  });
+
+  /* ---- sound sources: a URL, or a file off this device ---- */
+  $("btnFetch").addEventListener("click", function () {
+    var url = $("sfxUrl").value.trim();
+    if (!url) { toast("Paste a URL first"); return; }
+    var name = decodeURIComponent(url.split("/").pop().split("?")[0]) || "clip";
+    $("sfxNote").textContent = "Fetching " + name + "...";
+    fetch(url).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.arrayBuffer();
+    }).then(function (buf) {
+      addClip(name.replace(/\.[a-z0-9]+$/i, ""), buf);
+    })["catch"](function (e) {
+      // Almost always CORS: the server has to allow cross-origin reads.
+      $("sfxNote").textContent = "Could not fetch that URL (" + (e.message || e) +
+        "). If it is a CORS block, download the file and use the picker below.";
+    });
+  });
+
+  $("sfxFile").addEventListener("change", function () {
+    var f = $("sfxFile").files && $("sfxFile").files[0];
+    if (!f) return;
+    f.arrayBuffer().then(function (buf) {
+      addClip(f.name.replace(/\.[a-z0-9]+$/i, ""), buf);
+    })["catch"](function (e) {
+      $("sfxNote").textContent = "Could not read that file: " + (e.message || e);
+    });
+  });
+
+  /* ---------------------------------------------------------- boot ----- */
+  $("topicLine").textContent = HOST + " · floweuy/" + ID + "/";
+
+  loadSfx();
+  renderSfx();
+  renderBrain();
+  renderTracking(null);
+
+  var local = loadLocal();
+  if (local) { lib = local; } else { seed(); saveLocal(); }
+  selId = lib.defaultId || (lib.scripts[0] && lib.scripts[0].id) || null;
+  renderAll();
+
+  if (typeof mqtt === "undefined") {
+    setStatus("bad", "library blocked");
+    lastEl.textContent = "Could not load mqtt.js. Check your internet connection.";
+    return;
+  }
+
+  if (!HOST || !ID) {
+    setStatus("bad", "not set up");
+    lastEl.textContent = "";
+    askForConnection();
+    return;
+  }
+
+  client = mqtt.connect(BROKER, {
+    clientId: "flowey-view-" + Math.random().toString(16).slice(2, 10),
+    username: USER,
+    password: PASS,
+    keepalive: 30, reconnectPeriod: 3000, connectTimeout: 10000
+  });
+
+  client.on("connect", function () {
+    setStatus("ok", "connected");
+    client.subscribe([T.lcd, T.library], { qos: 0 });
+    client.subscribe(T.config, { qos: 1 });
+    client.subscribe(T.tracking, { qos: 1 });
+    client.subscribe(T.log, { qos: 1 });
+    client.subscribe(T.queue, { qos: 1 });
+  });
+  client.on("reconnect", function () { setStatus("warn", "reconnecting"); });
+  client.on("close",     function () { setStatus("warn", "disconnected"); });
+  client.on("error",     function (e) {
+    setStatus("bad", "error");
+    lastEl.textContent = String(e && e.message ? e.message : e);
+  });
+
+  var libLoaded = false;
+  client.on("message", function (topic, payload) {
+    var d;
+    try { d = JSON.parse(payload.toString()); } catch (e) { return; }
+
+    if (topic === T.lcd) { setStatus("ok", "connected"); render(d); return; }
+
+    if (topic === T.log) { renderLog(d); return; }
+    if (topic === T.queue) { renderQueue(d); return; }
+
+    if (topic === T.tracking) {
+      window.__hints = d.hints || window.__hints || [];
+      // Ticks live with the relay, not in the config, so editing the list
+      // from another device cannot wipe what he has already covered.
+      topicStatus = {};
+      (d.topics || []).forEach(function (t) { topicStatus[t.id] = t.done; });
+      $("writingNow").hidden = !d.generating;
+      renderTracking(d);
+      renderTopics();
+      renderCare(d.care);
+      return;
+    }
+
+    if (topic === T.config) {
+      if (d && typeof d === "object") {
+        Object.keys(d).forEach(function (k) { relayCfg[k] = d[k]; });
+        if (!relayCfg.rules) relayCfg.rules = [];
+        cfgLoaded = true;
+        renderBrain();
+      }
+      return;
+    }
+
+    if (topic === T.library && !libLoaded) {
+      // The retained library is the shared copy: take it once on connect so
+      // a new device picks up scripts written elsewhere, then let local
+      // edits win for the rest of the session.
+      libLoaded = true;
+      if (d && Array.isArray(d.scripts) && d.scripts.length) {
+        lib = d;
+        selId = lib.defaultId || lib.scripts[0].id;
+        saveLocal();
+        renderAll();
+      }
+    }
+  });
+})();
+
+/* ------------------------------------------------------------------ setup --
+ *
+ * This build ships with no credentials, so the first thing it needs is
+ * somewhere to connect. Whatever is typed here stays in this browser's
+ * local storage: it is never sent anywhere except the broker, and it is not
+ * in the page source for the next person to find.
+ */
+function askForConnection() {
+  if (document.getElementById("setupBox")) return;
+
+  var wrap = document.createElement("div");
+  wrap.id = "setupBox";
+  wrap.style.cssText =
+    "position:fixed;inset:0;z-index:99;display:flex;align-items:center;" +
+    "justify-content:center;padding:22px;background:rgba(8,10,8,.92)";
+
+  var card = document.createElement("div");
+  card.style.cssText =
+    "max-width:360px;width:100%;background:#11150f;border:1px solid #223022;" +
+    "border-radius:14px;padding:22px";
+
+  function field(label, type, ph) {
+    var l = document.createElement("label");
+    l.style.cssText = "display:block;font-size:10px;letter-spacing:.09em;" +
+      "text-transform:uppercase;color:#4d5a55;margin:13px 0 5px";
+    l.textContent = label;
+    var i = document.createElement("input");
+    i.type = type;
+    i.placeholder = ph || "";
+    i.style.cssText = "width:100%;padding:10px 11px;border-radius:9px;" +
+      "background:#0c0f0c;color:#9fb0ae;border:1px solid #223022;" +
+      "font-family:inherit;font-size:13px";
+    card.appendChild(l);
+    card.appendChild(i);
+    return i;
+  }
+
+  var h = document.createElement("div");
+  h.style.cssText = "font-size:13px;letter-spacing:.08em;" +
+    "text-transform:uppercase;color:#9fb0ae";
+  h.textContent = "Connect to your Flowey";
+  card.appendChild(h);
+
+  var p = document.createElement("p");
+  p.style.cssText = "font-size:11px;color:#4d5a55;line-height:1.55;margin:9px 0 0";
+  p.textContent = "This page ships with no details in it. What you type " +
+    "stays in this browser only - it is not saved to the site and nobody " +
+    "else loading this page gets it.";
+  card.appendChild(p);
+
+  var host = field("Broker host", "text", "xxxx.s1.eu.hivemq.cloud");
+  var user = field("Username", "text", "");
+  var pass = field("Password", "password", "");
+  var id = field("Device id", "text", "the bit in floweuy/<id>/lcd");
+
+  var err = document.createElement("p");
+  err.style.cssText = "font-size:11px;color:#d94a3f;min-height:1.2em;margin:11px 0 0";
+  card.appendChild(err);
+
+  var go = document.createElement("button");
+  go.textContent = "Connect";
+  go.style.cssText = "width:100%;margin-top:6px;padding:11px;border-radius:9px;" +
+    "background:#1b241b;color:#9fb0ae;border:1px solid #2b3a2b;cursor:pointer;" +
+    "font-family:inherit;font-size:12px;letter-spacing:.09em;text-transform:uppercase";
+  go.addEventListener("click", function () {
+    var h2 = host.value.trim().replace(/^wss?:\/\//, "").replace(/[:/].*$/, "");
+    if (!h2 || !user.value || !pass.value || !id.value.trim()) {
+      err.textContent = "All four are needed.";
+      return;
+    }
+    try {
+      localStorage.setItem("floweuy.conn", JSON.stringify({
+        host: h2, user: user.value, pass: pass.value, id: id.value.trim()
+      }));
+    } catch (e) {
+      err.textContent = "This browser will not let the page remember them.";
+      return;
+    }
+    location.reload();
+  });
+  card.appendChild(go);
+
+  var forget = document.createElement("button");
+  forget.textContent = "Forget these details";
+  forget.style.cssText = "width:100%;margin-top:9px;padding:9px;border:none;" +
+    "background:none;color:#4d5a55;cursor:pointer;font-family:inherit;font-size:11px";
+  forget.addEventListener("click", function () {
+    try { localStorage.removeItem("floweuy.conn"); } catch (e) {}
+    location.reload();
+  });
+  card.appendChild(forget);
+
+  wrap.appendChild(card);
+  document.body.appendChild(wrap);
+  host.focus();
+}
+</script>
+</body>
+</html>
