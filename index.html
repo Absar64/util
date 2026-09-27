@@ -183,6 +183,37 @@
   .spark i { flex: 1 1 auto; background: var(--edge-2); border-radius: 1px 1px 0 0; min-height: 2px; }
   .spark i.today { background: var(--lcd-on); }
 
+  /* ---- what he has worked out ---- */
+  .areagrid { display: flex; flex-direction: column; gap: 7px; }
+  .arearow { display: flex; align-items: center; gap: 10px; font-size: 10px;
+             letter-spacing: .08em; text-transform: uppercase;
+             color: var(--ink-dim); }
+  .arearow .nm { width: 78px; flex: none; text-align: left; }
+  .arearow .track { flex: 1 1 auto; height: 6px; border-radius: 4px;
+                    background: #182018; overflow: hidden; }
+  .arearow .fill { display: block; height: 100%; width: 0; border-radius: 4px;
+                   background: var(--lcd-on); transition: width .5s ease; }
+  .arearow .n { width: 46px; flex: none; text-align: right;
+                font-variant-numeric: tabular-nums; }
+
+  .fact { display: flex; gap: 10px; align-items: flex-start; padding: 8px 9px;
+          border-radius: 8px; background: #0f130f;
+          border-left: 3px solid var(--edge); }
+  .fact + .fact { margin-top: 4px; }
+  .fact .chip { flex: none; font-size: 9px; letter-spacing: .07em;
+                text-transform: uppercase; padding: 2px 7px; border-radius: 20px;
+                border: 1px solid var(--edge); color: var(--ink-dim);
+                margin-top: 1px; }
+  .fact .mid { flex: 1 1 auto; min-width: 0; }
+  .fact .v { font-size: 12px; }
+  .fact .why { font-size: 10px; color: var(--ink-dim); margin-top: 3px; }
+  .fact .why b { color: var(--ink); font-weight: normal; }
+  .fact .x { flex: none; background: none; border: none; cursor: pointer;
+             color: var(--ink-dim); font-size: 13px; padding: 0 2px;
+             line-height: 1; }
+  .fact .x:hover { color: var(--bad); }
+  .fact.changed { border-left-color: var(--warn); }
+
   /* ---- the history, and what is coming ---- */
   .ev { display: flex; gap: 10px; align-items: flex-start; padding: 7px 9px;
         border-radius: 8px; border: 1px solid transparent;
@@ -326,6 +357,7 @@
     <button class="tab" id="tabSounds" role="tab" aria-selected="false" aria-controls="paneSounds">Sounds</button>
     <button class="tab" id="tabTracking" role="tab" aria-selected="false" aria-controls="paneTracking">Tracking</button>
     <button class="tab" id="tabCare" role="tab" aria-selected="false" aria-controls="paneCare">Care</button>
+    <button class="tab" id="tabLearned" role="tab" aria-selected="false" aria-controls="paneLearned">Learned</button>
     <button class="tab" id="tabLog" role="tab" aria-selected="false" aria-controls="paneLog">Log</button>
     <button class="tab" id="tabBrain" role="tab" aria-selected="false" aria-controls="paneBrain">Brain</button>
   </div>
@@ -660,6 +692,44 @@
     </div>
   </section>
 
+  <section id="paneLearned" role="tabpanel" hidden>
+    <div class="card">
+      <div class="barrow">
+        <span class="sect grow">How well he knows them</span>
+        <span class="tiny" id="learnCount">--</span>
+      </div>
+      <div class="barrow">
+        <span class="sect" style="min-width:78px">Overall</span>
+        <span class="bar grow"><i id="barKnown"></i></span>
+        <span class="v" id="valKnown" style="min-width:42px;text-align:right">--</span>
+      </div>
+      <div class="areagrid" id="areaGrid" style="margin-top:12px"></div>
+      <p class="note">
+        Every one of these came from a button press. He asks two or three
+        questions when there is nothing on the &ldquo;things to talk
+        about&rdquo; list, and each answer narrows what he asks next - so the
+        longer this runs the more pointed the questions get.
+      </p>
+      <div class="barrow">
+        <label class="chk"><input type="checkbox" id="cbInterview" checked>
+          Ask questions when there is nothing to discuss</label>
+      </div>
+      <p class="note">
+        Off: he makes ordinary conversation on an empty evening instead.
+        Turning off <em>his other side</em> on the Brain tab also stops the
+        questions - the sweet one does not interrogate people.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="barrow">
+        <span class="sect grow">What he knows</span>
+        <button id="btnForgetAll" class="tiny danger">Forget everything</button>
+      </div>
+      <div id="factList"></div>
+    </div>
+  </section>
+
   <section id="paneLog" role="tabpanel" hidden>
     <div class="card">
       <div class="barrow">
@@ -934,7 +1004,8 @@
     log:      "floweuy/" + ID + "/log",
     gen:     "floweuy/" + ID + "/gen",
     library: "floweuy/" + ID + "/scripts",
-    queue:   "floweuy/" + ID + "/queue"
+    queue:   "floweuy/" + ID + "/queue",
+    profile: "floweuy/" + ID + "/profile"
   };
   var COLS = 16, MAX_STEPS = 24, OPT_MAX = 8;
   var LS_KEY = "floweuy.library.v1";
@@ -1747,7 +1818,7 @@
 
   // tabs
   function showTab(which) {
-    ["monitor", "scripts", "sounds", "tracking", "care", "log", "brain"].forEach(function (name) {
+    ["monitor", "scripts", "sounds", "tracking", "care", "learned", "log", "brain"].forEach(function (name) {
       var on = which === name;
       var cap = name.charAt(0).toUpperCase() + name.slice(1);
       $("tab" + cap).setAttribute("aria-selected", on ? "true" : "false");
@@ -2028,7 +2099,133 @@
 
   $("tabTracking").addEventListener("click", function () { showTab("tracking"); });
   $("tabCare").addEventListener("click",    function () { showTab("care"); });
+  $("tabLearned").addEventListener("click", function () { showTab("learned"); });
   $("tabLog").addEventListener("click",     function () { showTab("log"); });
+
+  /* ---- what he has worked out about them ----
+   *
+   * Everything here is evidence-backed: each fact carries the question that
+   * produced it and which button was pressed. That matters, because a list
+   * of confident assertions about somebody with no working shown is both
+   * creepier and less useful than one you can audit.
+   */
+  var profileSeen = null;
+
+  function renderProfile(p) {
+    profileSeen = p;
+    var cov = p.coverage || { areas: {}, overall: 0, facts: 0 };
+
+    $("valKnown").textContent = (cov.overall | 0) + "%";
+    $("barKnown").style.width = (cov.overall | 0) + "%";
+    $("barKnown").style.background = cov.overall < 30 ? "var(--warn)"
+                                                      : "var(--lcd-on)";
+    $("learnCount").textContent = cov.facts +
+      (cov.facts === 1 ? " thing learned" : " things learned");
+
+    var grid = $("areaGrid");
+    grid.textContent = "";
+    (p.areas || []).forEach(function (a) {
+      var pct = (cov.areas || {})[a.name] | 0;
+      var row = document.createElement("div");
+      row.className = "arearow";
+      var nm = document.createElement("span");
+      nm.className = "nm"; nm.textContent = a.name; nm.title = a.blurb;
+      var tr = document.createElement("span");
+      tr.className = "track";
+      var fi = document.createElement("i");
+      fi.className = "fill";
+      fi.style.width = pct + "%";
+      fi.style.background = pct < 30 ? "#3a4a3a"
+                                     : (pct < 70 ? "var(--warn)" : "var(--lcd-on)");
+      tr.appendChild(fi);
+      var n = document.createElement("span");
+      n.className = "n"; n.textContent = pct + "%";
+      row.appendChild(nm); row.appendChild(tr); row.appendChild(n);
+      grid.appendChild(row);
+    });
+
+    var host = $("factList");
+    host.textContent = "";
+    var facts = (p.facts || []).slice().reverse();
+    if (!facts.length) {
+      var note = document.createElement("p");
+      note.className = "note";
+      note.textContent = "Nothing yet. He learns from answered questions, " +
+        "so this fills up once the list of things to talk about is empty.";
+      host.appendChild(note);
+      return;
+    }
+
+    facts.forEach(function (f) {
+      var row = document.createElement("div");
+      row.className = "fact" + (f.changed ? " changed" : "");
+
+      var chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = f.area;
+      row.appendChild(chip);
+
+      var mid = document.createElement("div");
+      mid.className = "mid";
+      var v = document.createElement("div");
+      v.className = "v";
+      v.textContent = f.value;
+      mid.appendChild(v);
+
+      var why = document.createElement("div");
+      why.className = "why";
+      var dt = new Date(f.at);
+      why.appendChild(document.createTextNode("asked "));
+      var q = document.createElement("b");
+      q.textContent = "\u201c" + (f.q || "?") + "\u201d";
+      why.appendChild(q);
+      why.appendChild(document.createTextNode(", answered "));
+      var ans = document.createElement("b");
+      ans.textContent = f.answer || "?";
+      why.appendChild(ans);
+      if (!isNaN(dt)) {
+        why.appendChild(document.createTextNode(
+          " \u00b7 " + dt.toLocaleString([], { day: "2-digit", month: "short",
+                                               hour: "2-digit", minute: "2-digit" })));
+      }
+      if (f.changed) {
+        why.appendChild(document.createTextNode(
+          " \u00b7 changed their mind " + f.changed +
+          (f.changed === 1 ? " time" : " times")));
+      }
+      mid.appendChild(why);
+      row.appendChild(mid);
+
+      var x = document.createElement("button");
+      x.className = "x";
+      x.textContent = "\u2715";
+      x.title = "Forget this";
+      x.addEventListener("click", function () {
+        pub(T.cmd, { op: "forget", id: f.id });
+        row.style.opacity = ".3";
+      });
+      row.appendChild(x);
+
+      host.appendChild(row);
+    });
+  }
+
+  $("btnForgetAll").addEventListener("click", function () {
+    var n = profileSeen && profileSeen.coverage
+            ? profileSeen.coverage.facts : 0;
+    if (!n) { toast("There is nothing to forget"); return; }
+    if (!confirm("Forget all " + n + " things he has learned? " +
+                 "This cannot be undone.")) return;
+    pub(T.cmd, { op: "forget", all: true });
+    toast("Forgotten");
+  });
+
+  $("cbInterview").addEventListener("change", function () {
+    relayCfg.interview = $("cbInterview").checked;
+    pushConfig();
+    toast(relayCfg.interview ? "He will ask questions"
+                             : "He will just chat");
+  });
 
   /* ---- looking after him ---- */
   /*
@@ -2667,7 +2864,7 @@
     aiDefault: true, customDefaultId: null, mentionTracking: true,
     provider: "gemini", model: "", temperature: 1.0, regenerateOnRest: true,
     parameters: [], topics: [],
-    careEnabled: true, scaryEnabled: true,
+    careEnabled: true, scaryEnabled: true, interview: true,
     discordOnWake: false, wakeMessage: "He was woken up!",
     minRegenMinutes: 3, rules: []
   };
@@ -3019,6 +3216,7 @@
     $("cbWakeDiscord").checked = !!relayCfg.discordOnWake;
     $("wakeMessage").value = relayCfg.wakeMessage || "He was woken up!";
     $("cbScary").checked = relayCfg.scaryEnabled !== false;
+    $("cbInterview").checked = relayCfg.interview !== false;
     showScary();
     $("selProvider").value = relayCfg.provider || "gemini";
     $("inModel").value = relayCfg.model || "";
@@ -3285,6 +3483,7 @@
     client.subscribe(T.tracking, { qos: 1 });
     client.subscribe(T.log, { qos: 1 });
     client.subscribe(T.queue, { qos: 1 });
+    client.subscribe(T.profile, { qos: 1 });
   });
   client.on("reconnect", function () { setStatus("warn", "reconnecting"); });
   client.on("close",     function () { setStatus("warn", "disconnected"); });
@@ -3302,6 +3501,7 @@
 
     if (topic === T.log) { renderLog(d); return; }
     if (topic === T.queue) { renderQueue(d); return; }
+    if (topic === T.profile) { renderProfile(d); return; }
 
     if (topic === T.tracking) {
       window.__hints = d.hints || window.__hints || [];
