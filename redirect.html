@@ -1,0 +1,157 @@
+<!doctype html><html lang=en><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Desk pet</title>
+<link rel=icon href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><g fill='%23f2d94a'><circle cx='8' cy='3.4' r='2.6'/><circle cx='8' cy='12.6' r='2.6'/><circle cx='3.4' cy='8' r='2.6'/><circle cx='12.6' cy='8' r='2.6'/></g><circle cx='8' cy='8' r='2.8' fill='%23e07a2a'/></svg>">
+
+<!--
+  What the tag opens.
+
+  It used to point at the relay, which meant standing on the same WiFi to
+  water him. Now it points here, and the tap goes out over the broker
+  instead - so it works from anywhere with a signal, and the relay can be
+  in another building.
+
+  This page decides nothing. It says "he was tapped" and the relay applies
+  whatever was chosen beforehand, exactly as it did when the tag pointed at
+  it directly. That way a stray tap cannot invent an action of its own.
+-->
+
+<style>
+ :root{color-scheme:dark;
+   --bg:#0c0f0c; --ink:#9fb0ae; --dim:#4d5a55;
+   --water:#4ab8d9; --heal:#3fd94a; --bad:#d94a3f}
+ *{box-sizing:border-box}
+ html,body{margin:0;padding:0}
+ body{min-height:100dvh;background:var(--bg);color:var(--ink);
+   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+   -webkit-font-smoothing:antialiased;
+   display:flex;align-items:center;justify-content:center;
+   padding:24px;text-align:center}
+ a{color:inherit}
+ .c{max-width:320px;width:100%}
+ .icon{width:96px;height:96px;margin:0 auto 22px;display:block}
+ h1{font-size:19px;margin:0 0 8px;letter-spacing:.08em;text-transform:uppercase}
+ p{margin:0;font-size:14px;line-height:1.5}
+ .sub{margin-top:26px;font-size:11px;color:var(--dim)}
+
+ /* While the tap is in flight. It is usually well under a second, but a
+    phone that has just woken up can take longer to get a connection. */
+ .spin{width:52px;height:52px;margin:0 auto 22px;border-radius:50%;
+   border:3px solid #1e2a1e;border-top-color:var(--ink);
+   animation:spin .9s linear infinite}
+ @keyframes spin{to{transform:rotate(360deg)}}
+ @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+ .done{animation:rise .3s ease-out}
+ @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+
+<div class=c id=box>
+ <div class=spin></div>
+ <p id=waiting>Telling him you are here&hellip;</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.3.4/mqtt.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  var box = document.getElementById("box");
+
+  var ICON = {
+    water: ['#4ab8d9',
+      '<path d="M24 5c0 0 12 13.5 12 21.5A12 12 0 0 1 12 26.5C12 18.5 24 5 24 5z" fill="#4ab8d9" fill-opacity=".18"/><path d="M18 27a6 6 0 0 0 6 6"/>'],
+    heal: ['#3fd94a',
+      '<circle cx="24" cy="24" r="17" fill="#3fd94a" fill-opacity=".14"/><path d="M16 24.5l5.5 5.5L32 19"/>'],
+    poison: ['#d94a3f',
+      '<path d="M24 6l19 33H5L24 6z" fill="#d94a3f" fill-opacity=".14"/><path d="M24 19v9"/><path d="M24 33.5v.5"/>'],
+    can: ['#4ab8d9',
+      '<path d="M11 20h19v13a5 5 0 0 1-5 5H16a5 5 0 0 1-5-5z" fill="#4ab8d9" fill-opacity=".18"/><path d="M30 24l7-6v14z" fill="#4ab8d9" fill-opacity=".18"/><path d="M15 20a5 5 0 0 1 10 0"/><path d="M8 13l4 3"/><path d="M6 20h3"/><path d="M8 27l4-3"/>'],
+    sad: ['#9fb0ae',
+      '<circle cx="24" cy="24" r="17" fill="#9fb0ae" fill-opacity=".10"/><path d="M17 30a9 9 0 0 1 14 0"/><path d="M18 19v.5"/><path d="M30 19v.5"/>']
+  };
+
+  var settled = false;
+
+  function show(kind, title, message, sub) {
+    if (settled) return;
+    settled = true;
+    var art = ICON[kind] || ICON.sad;
+    box.innerHTML =
+      '<div class=done>' +
+      '<svg class=icon viewBox="0 0 48 48" fill="none" stroke="' + art[0] +
+      '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"' +
+      ' aria-hidden="true">' + art[1] + '</svg>' +
+      '<h1 style="color:' + art[0] + '"></h1><p></p>' +
+      '<p class=sub></p></div>';
+    box.querySelector("h1").textContent = title;
+    box.querySelector("p").textContent = message;
+    var s = box.querySelector(".sub");
+    if (sub === "home") {
+      var a = document.createElement("a");
+      a.href = "home.html";
+      a.textContent = "open his page";
+      s.appendChild(a);
+    } else {
+      s.textContent = sub || "";
+    }
+  }
+
+  var conn = null;
+  try { conn = JSON.parse(localStorage.getItem("floweuy.conn") || "null"); }
+  catch (e) { conn = null; }
+
+  if (!conn || !conn.host || !conn.id) {
+    show("sad", "Not set up yet",
+         "This phone has not been connected to him. Open his page once and " +
+         "put the details in, then the tag will work.", "home");
+    return;
+  }
+
+  var ID = conn.id;
+  var T_CARE = "floweuy/" + ID + "/care";
+  var T_RESULT = "floweuy/" + ID + "/care_result";
+  var tapId = Math.random().toString(16).slice(2, 10);
+
+  var client = mqtt.connect("wss://" + conn.host + ":8884/mqtt", {
+    clientId: "flowey-tap-" + tapId,
+    username: conn.user, password: conn.pass,
+    keepalive: 20, reconnectPeriod: 0, connectTimeout: 8000
+  });
+
+  client.on("connect", function () {
+    client.subscribe(T_RESULT, { qos: 1 }, function () {
+      /* Subscribe first, then tap - otherwise a quick reply can arrive
+         before we are listening for it and the page waits for nothing. */
+      client.publish(T_CARE, JSON.stringify({ tap: true, id: tapId }),
+                     { qos: 1 });
+    });
+  });
+
+  client.on("message", function (topic, buf) {
+    var d;
+    try { d = JSON.parse(buf.toString()); } catch (e) { return; }
+    if (d.id && d.id !== tapId) return;      /* somebody else's tap */
+    show(d.kind, d.title, d.message,
+         d.action ? "" : "home");
+    try { client.end(); } catch (e) {}
+  });
+
+  client.on("error", function () {
+    show("sad", "Could not reach him",
+         "Check you have a signal. Nothing has been changed.", "home");
+    try { client.end(true); } catch (e) {}
+  });
+
+  /*
+   * The relay is what actually waters him, so if it is not running - the
+   * computer asleep, say - nothing will answer. Better to say so than to
+   * spin forever and leave her unsure whether it worked.
+   */
+  setTimeout(function () {
+    show("sad", "No answer",
+         "He did not respond. He may be switched off. Nothing has been " +
+         "changed, so try again in a moment.", "home");
+    try { client.end(true); } catch (e) {}
+  }, 12000);
+}());
+</script>
+</html>

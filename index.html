@@ -1884,7 +1884,7 @@
 
   function wireCareLinks() {
     var base = careBase();
-    $("tagUrl").textContent = (base || "http://<relay>:8080") + "/redirect";
+    $("tagUrl").textContent = location.origin + location.pathname.replace(/[^/]*$/, "") + "redirect.html";
     var off = relayCfg.careEnabled === false;
     ["linkWater", "linkHeal", "armWater", "armHeal"].forEach(function (id) {
       var el = $(id);
