@@ -268,6 +268,37 @@
   .lcdmini .opts { color: var(--warn); }
   .lcdmini i { color: #2d4030; font-style: normal; }
 
+  /* ---- the simulator ---- */
+  .simwrap { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+  .simdev { flex: 0 0 auto; }
+  .simside { flex: 1 1 260px; min-width: 240px; }
+  .simglass { background: #101a10; border: 1px solid #1e2e1e; border-radius: 8px;
+              padding: 14px 16px; font-family: ui-monospace, monospace;
+              font-size: 17px; line-height: 1.7; letter-spacing: .13em;
+              white-space: pre; color: #7ee787;
+              text-shadow: 0 0 9px rgba(126,231,135,.45);
+              box-shadow: inset 0 0 26px rgba(0,0,0,.55);
+              transition: background .08s, color .08s; }
+  .simglass.dark { background: #0b0f0b; color: #223022; text-shadow: none; }
+  .simglass.d1 { border-color: #3a3a1e; }
+  .simglass.d2 { border-color: #4a2f1e; }
+  .simglass.d3 { border-color: #5a1e1e; color: #e7a87e; }
+  .simbtns { display: flex; gap: 12px; margin-top: 12px; }
+  .simbtns button { flex: 1 1 0; padding: 12px; border-radius: 10px;
+                    border: 1px solid var(--edge); background: #141814;
+                    color: var(--ink); cursor: pointer; font-family: inherit;
+                    font-size: 11px; letter-spacing: .08em;
+                    text-transform: uppercase; }
+  .simbtns button:active { transform: scale(.97); }
+  .simrow { display: flex; gap: 9px; align-items: center; margin-top: 10px;
+            font-size: 11px; color: var(--ink-dim); }
+  .simstate { font-size: 10px; color: var(--ink-dim); margin-top: 10px;
+              letter-spacing: .06em; text-transform: uppercase; }
+  .testbar { border: 1px solid #5a4a1e; background: #1a1608; border-radius: 10px;
+             padding: 10px 12px; margin-bottom: 14px; font-size: 11px;
+             color: var(--warn); display: none; }
+  .testbar.on { display: block; }
+
   /* ---- picking what he says on waking ---- */
   .pick { display: flex; gap: 8px; }
   .pick button { flex: 1 1 0; padding: 10px 8px; border-radius: 10px;
@@ -309,6 +340,12 @@
           border: 2px solid var(--edge); border-top-color: var(--lcd-on);
           animation: spin .8s linear infinite; vertical-align: -1px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  textarea { width: 100%; background: var(--panel); color: var(--ink);
+             border: 1px solid var(--edge); border-radius: 8px;
+             padding: 9px 10px; font-family: inherit; font-size: 12px;
+             line-height: 1.5; resize: vertical; }
+  textarea:focus { outline: none; border-color: var(--ink-dim); }
 
   .feed { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
   .feedrow {
@@ -379,6 +416,7 @@
     <button class="tab" id="tabTracking" role="tab" aria-selected="false" aria-controls="paneTracking">Tracking</button>
     <button class="tab" id="tabCare" role="tab" aria-selected="false" aria-controls="paneCare">Care</button>
     <button class="tab" id="tabLearned" role="tab" aria-selected="false" aria-controls="paneLearned">Learned</button>
+    <button class="tab" id="tabSim" role="tab" aria-selected="false" aria-controls="paneSim">Simulator</button>
     <button class="tab" id="tabLog" role="tab" aria-selected="false" aria-controls="paneLog">Log</button>
     <button class="tab" id="tabBrain" role="tab" aria-selected="false" aria-controls="paneBrain">Brain</button>
   </div>
@@ -476,6 +514,21 @@
 
       <div class="steps" id="stepList"></div>
       <div class="barrow"><button id="btnAddStep">+ Add step</button></div>
+
+      <div class="barrow" style="border-top:1px solid var(--edge); padding-top:12px">
+        <span class="sect grow">Write it long, and let him cut it up</span>
+      </div>
+      <textarea id="longText" rows="4" placeholder="Type or paste as much as you like. It gets laid out across as many screens as it needs, breaking on whole words - exactly the way his own dialogue is laid out." aria-label="Long message"></textarea>
+      <div class="barrow">
+        <span class="sect grow" id="longCount">&nbsp;</span>
+        <button id="btnSplitAdd">Add to this script</button>
+        <button id="btnSplitNew" class="primary">Make a new script</button>
+      </div>
+      <p class="note">
+        Line breaks start a new screen; everything else flows. Twenty-four
+        screens is his limit, so anything past that is left in the box for
+        a second script rather than silently dropped.
+      </p>
 
       <div class="barrow" style="border-top:1px solid var(--edge); padding-top:12px">
         <label class="chk"><input type="checkbox" id="chkLoop"> Loop this script</label>
@@ -793,6 +846,75 @@
     </div>
   </section>
 
+  <section id="paneSim" role="tabpanel" hidden>
+    <div class="testbar" id="testBar">
+      Testing mode is on. Nothing is being sent to the real device - every
+      script, notification and sound goes to the simulator below instead.
+    </div>
+
+    <div class="card">
+      <div class="barrow">
+        <span class="sect grow">Testing mode</span>
+        <label class="chk"><input type="checkbox" id="cbTestMode">
+          Send everything here instead of to the device</label>
+      </div>
+      <p class="note">
+        While this is on, the web app and the relay both stop talking to the
+        device: it keeps whatever it was last given and is left alone. Turn
+        it off and everything goes back to the real one.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="simwrap">
+        <div class="simdev">
+          <div class="simglass dark" id="simGlass"><span id="simR0">                </span>
+<span id="simR1">                </span></div>
+          <div class="simbtns">
+            <button id="simBtnA">Left</button>
+            <button id="simBtnB">Right</button>
+          </div>
+          <div class="simrow">
+            <label class="chk"><input type="checkbox" id="simPower" checked>
+              Power switch</label>
+          </div>
+          <div class="simstate" id="simState">resting</div>
+        </div>
+
+        <div class="simside">
+          <span class="sect">Try something</span>
+          <div class="barrow" style="margin-top:8px">
+            <select id="simScript" class="grow" aria-label="Script to try"></select>
+          </div>
+          <div class="barrow">
+            <button id="simPlay">&#9654; Play</button>
+            <button id="simNotify">&#9788; Notify</button>
+            <button id="simQueue">Queue</button>
+          </div>
+          <div class="barrow">
+            <button id="simDefault" class="tiny">Make it the default</button>
+            <button id="simWrite" class="tiny primary">Ask him to write one</button>
+          </div>
+          <p class="note">
+            The same engine as the device: the typing speed comes from the
+            dread of each step (95/62/45/32ms a character), a step with
+            dread flickers the backlight first, the right button skips to
+            the end of a line and the left button repeats the one before.
+          </p>
+          <p class="note">
+            Not simulated: sound. There is no speaker here, so blips, music
+            and effects are listed in the feed rather than played.
+          </p>
+          <div class="barrow">
+            <span class="sect grow">What happened</span>
+            <button id="simClear" class="tiny">Clear</button>
+          </div>
+          <div class="feed" id="simFeed" style="max-height:220px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="paneLog" role="tabpanel" hidden>
     <div class="card">
       <div class="barrow">
@@ -1025,6 +1147,440 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.3.4/mqtt.min.js"></script>
+<script>
+/* ---------------------------------------------------------- simulator ----
+ *
+ * The device, in a browser tab.
+ *
+ * This is not a preview. It is a reimplementation of the dialogue engine in
+ * 06_flowey.ino, running the same state machine against the same wire
+ * format, so that a script behaving here is real evidence about how it will
+ * behave on the desk. The numbers below are lifted from the firmware rather
+ * than chosen to look right:
+ *
+ *   SPEED_BY_DREAD   95/62/45/32 ms per character
+ *   the flash        2 + dread*2 half-beats, 70ms lit, 45ms dark
+ *   stepNext         next == -2 ends, next >= 0 jumps, otherwise idx + 1
+ *   the choice row   option A left, option B right-aligned, same row
+ *   the buttons      right continues, left repeats the previous line
+ *
+ * Where it cannot be faithful, it says so rather than pretending: there is
+ * no audio here, and the backlight is drawn as a colour change because a
+ * browser has no backlight to switch.
+ */
+(function (global) {
+  "use strict";
+
+  var COLS = 16;
+  var SPEED_BY_DREAD = [95, 62, 45, 32];
+  var NAG_AFTER_MS = 8000;
+
+  function pad(s) { return ((s || "") + "                ").slice(0, COLS); }
+
+  function Sim(opts) {
+    this.onDraw = opts.onDraw || function () {};
+    this.onEvent = opts.onEvent || function () {};
+    this.onState = opts.onState || function () {};
+
+    this.rows = ["", ""];
+    this.lit = false;
+    this.presence = "resting";      // playing | resting | notify
+    this.dread = 0;
+
+    this.steps = [];
+    this.name = "";
+    this.loop = false;
+    this.kind = "default";          // default | oneshot | haunt | farewell
+    this.idx = 0;
+    this.prevIdx = -1;
+    this.resumeAt = -1;
+
+    this.state = "idle";
+    this.charPos = 0;
+    this.tMark = 0;
+    this.flashLeft = 0;
+    this.flashLit = false;
+    this.choiceStart = 0;
+    this.nagged = false;
+    this.inRecap = false;
+    this.recapReturn = -1;
+
+    this.pending = null;            // a notification waiting to be read
+    this.queued = null;             // the one queued script he holds
+    this.defaultScript = null;
+    this.hauntScript = null;
+
+    this.idleAfterMs = 8 * 60 * 1000;
+    this.lastActivity = Date.now();
+    this.powered = true;
+
+    this.timer = null;
+  }
+
+  /* ---- the glass ---- */
+
+  Sim.prototype.draw = function () {
+    this.onDraw({
+      r0: pad(this.rows[0]), r1: pad(this.rows[1]),
+      lit: this.lit, dread: this.dread, presence: this.presence,
+      name: this.name, idx: this.idx, steps: this.steps.length
+    });
+  };
+
+  Sim.prototype.setRow = function (i, text) {
+    this.rows[i] = pad(text);
+    this.draw();
+  };
+
+  Sim.prototype.setChar = function (row, col, ch) {
+    var r = pad(this.rows[row]).split("");
+    r[col] = ch;
+    this.rows[row] = r.join("");
+    this.draw();
+  };
+
+  Sim.prototype.clearRow = function (i) { this.setRow(i, ""); };
+
+  Sim.prototype.setLit = function (on) { this.lit = !!on; this.draw(); };
+
+  /* ---- loading something to say ---- */
+
+  Sim.prototype.activate = function (script, kind) {
+    if (!script || !script.steps || !script.steps.length) return;
+    this.steps = script.steps;
+    this.name = script.name || "?";
+    this.loop = !!script.loop;
+    this.kind = kind || "oneshot";
+    this.idx = 0;
+    this.prevIdx = -1;
+    this.resumeAt = -1;
+    this.inRecap = false;
+    this.presence = "playing";
+    this.lastActivity = Date.now();
+    this.setLit(true);
+    this.state = "enter";
+    this.onEvent({ e: "start", scr: this.name, n: this.steps.length });
+    this.onState();
+  };
+
+  Sim.prototype.loadDefault = function () {
+    if (this.defaultScript) this.activate(this.defaultScript, "default");
+    else this.rest();
+  };
+
+  Sim.prototype.rest = function () {
+    this.onEvent({ e: "rest", scr: this.name, step: this.resumeAt });
+    this.presence = "resting";
+    this.state = "idle";
+    this.setRow(0, ""); this.setRow(1, "");
+    this.setLit(false);
+    this.onState();
+  };
+
+  /* ---- what the relay and the web app send it ---- */
+
+  Sim.prototype.command = function (msg) {
+    if (!this.powered) return;
+    var op = msg.op;
+    if (op === "play" && msg.script) {
+      this.activate(msg.script, "oneshot");
+    } else if (op === "queue" && msg.script) {
+      this.queued = msg.script;
+      this.onState();
+    } else if (op === "notify" && msg.script) {
+      this.pending = msg.script;
+      if (this.presence === "resting") { this.presence = "notify"; }
+      this.onState();
+    } else if (op === "stop") {
+      this.pending = null;
+      this.queued = null;
+      this.onState();
+    } else if (op === "vol" || op === "mute") {
+      /* No audio here. Recorded so the log still shows it arrived. */
+      this.onState();
+    }
+  };
+
+  Sim.prototype.setDefault = function (script) {
+    this.defaultScript = script;
+    this.onState();
+  };
+
+  Sim.prototype.setHaunt = function (script) { this.hauntScript = script; };
+
+  /* ---- the two buttons ---- */
+
+  Sim.prototype.press = function (which) {
+    if (!this.powered) return;
+    this.lastActivity = Date.now();
+
+    /* A press is how you read it, whatever state he is in. */
+    if (this.presence !== "playing") {
+      this.setLit(true);
+      this.onEvent({ e: "wake",
+                     from: this.presence === "resting" ? "sleep" : "notify" });
+      if (this.resumeAt >= 0 && this.resumeAt < this.steps.length &&
+          !this.pending) {
+        this.presence = "playing";
+        this.idx = this.resumeAt;
+        this.resumeAt = -1;
+        this.state = "enter";
+        this.onState();
+        return;
+      }
+      this.resumeAt = -1;
+      if (this.pending) {
+        var p = this.pending;
+        this.pending = null;
+        this.activate(p, "oneshot");
+      } else if (this.queued) {
+        var q = this.queued;
+        this.queued = null;
+        this.activate(q, "oneshot");
+      } else {
+        this.loadDefault();
+      }
+      return;
+    }
+
+    var st = this.steps[this.idx];
+    if (!st) return;
+
+    if (this.state === "choice") {
+      /* During a question the buttons are the answer and nothing else. */
+      var pick = which === "a" ? st.oa : st.ob;
+      var to = which === "a" ? st.na : st.nb;
+      this.onEvent({ e: "choice", scr: this.name, step: this.idx,
+                     pick: pick, q: st.t });
+      this.goto(to >= 0 ? to : this.stepNext(st, this.idx));
+      return;
+    }
+
+    if (this.state === "hold") {
+      if (this.inRecap) {
+        if (which === "b") {
+          this.inRecap = false;
+          var back = this.recapReturn;
+          this.recapReturn = -1;
+          this.idx = back;
+          this.state = "enter";
+        }
+        return;
+      }
+      if (which === "b") {
+        this.goto(this.stepNext(st, this.idx));
+      } else {
+        /* Left repeats the line before this one - once, never further. */
+        if (this.prevIdx >= 0 && this.prevIdx < this.steps.length) {
+          this.recapReturn = this.idx;
+          this.inRecap = true;
+          this.onEvent({ e: "back", scr: this.name, step: this.idx });
+          this.idx = this.prevIdx;
+          this.state = "enter";
+        }
+      }
+      return;
+    }
+
+    /* Mid-typing, the right button finishes the line at once. */
+    if (which === "b" && (this.state === "typeTop" || this.state === "typeBot")) {
+      if (this.state === "typeTop") {
+        this.setRow(0, st.t);
+        if (st.oa) {
+          this.showChoice(st);
+        } else {
+          this.setRow(1, st.b);
+          this.enterHold();
+        }
+      } else {
+        this.setRow(1, st.b);
+        this.enterHold();
+      }
+    }
+  };
+
+  Sim.prototype.stepNext = function (st, idx) {
+    if (st.nx === -2) return -2;
+    if (st.nx >= 0) return st.nx;
+    return idx + 1;
+  };
+
+  Sim.prototype.goto = function (next) {
+    if (next === -2 || next < 0 || next >= this.steps.length) {
+      this.finish();
+      return;
+    }
+    this.prevIdx = this.idx;
+    this.idx = next;
+    this.state = "enter";
+  };
+
+  Sim.prototype.finish = function () {
+    if (this.loop) { this.idx = 0; this.state = "enter"; return; }
+    this.resumeAt = -1;
+    this.rest();
+  };
+
+  Sim.prototype.showChoice = function (st) {
+    var row = "                ".split("");
+    var a = (st.oa || "").slice(0, COLS);
+    var b = (st.ob || "").slice(0, COLS);
+    for (var i = 0; i < a.length; i++) row[i] = a[i];
+    var bStart = COLS - b.length;
+    if (bStart > a.length) {
+      for (var j = 0; j < b.length; j++) row[bStart + j] = b[j];
+    }
+    this.setRow(1, row.join(""));
+    this.state = "choice";
+    this.choiceStart = Date.now();
+    this.nagged = false;
+    this.onState();
+  };
+
+  Sim.prototype.enterHold = function () {
+    this.state = "hold";
+    this.tMark = Date.now();
+    this.onState();
+  };
+
+  /* ---- the loop ---- */
+
+  Sim.prototype.tick = function () {
+    if (!this.powered) return;
+    var now = Date.now();
+    var st = this.steps[this.idx];
+
+    /* Nothing for a while: go quiet where he stands, so waking resumes. */
+    if (this.presence === "playing" && this.idleAfterMs &&
+        now - this.lastActivity > this.idleAfterMs &&
+        this.kind !== "farewell") {
+      this.resumeAt = this.idx;
+      this.rest();
+      return;
+    }
+
+    if (this.presence !== "playing" || !st) {
+      this.draw();
+      return;
+    }
+
+    var base = st.speed ? st.speed : SPEED_BY_DREAD[Math.min(3, st.d || 0)];
+
+    switch (this.state) {
+      case "enter":
+        this.dread = st.d || 0;
+        if (st.d) {
+          this.flashLeft = 2 + st.d * 2;
+          this.flashLit = true;
+          this.tMark = now;
+          this.state = "flash";
+        } else {
+          this.charPos = 0;
+          this.clearRow(0);
+          this.state = "typeTop";
+          this.tMark = now;
+        }
+        this.onState();
+        break;
+
+      case "flash":
+        if (now - this.tMark >= (this.flashLit ? 70 : 45)) {
+          this.flashLit = !this.flashLit;
+          this.setLit(this.flashLit);
+          this.tMark = now;
+          if (--this.flashLeft <= 0) {
+            this.setLit(true);
+            this.charPos = 0;
+            this.clearRow(0);
+            this.state = "typeTop";
+          }
+        }
+        break;
+
+      case "typeTop":
+        if (now - this.tMark >= base) {
+          this.tMark = now;
+          var t = st.t || "";
+          if (this.charPos < t.length && this.charPos < COLS) {
+            this.setChar(0, this.charPos, t[this.charPos]);
+            this.charPos++;
+          } else if (st.oa) {
+            this.showChoice(st);
+          } else {
+            this.charPos = 0;
+            this.clearRow(1);
+            this.state = "typeBot";
+          }
+        }
+        break;
+
+      case "typeBot":
+        if (now - this.tMark >= base) {
+          this.tMark = now;
+          var b = st.b || "";
+          if (this.charPos < b.length && this.charPos < COLS) {
+            this.setChar(1, this.charPos, b[this.charPos]);
+            this.charPos++;
+          } else {
+            this.enterHold();
+          }
+        }
+        break;
+
+      case "hold":
+        if (this.inRecap) break;          /* a repeat waits indefinitely */
+        if (st.waitRight) break;          /* this one needs a press */
+        if (st.h > 0 && now - this.tMark >= st.h) {
+          this.goto(this.stepNext(st, this.idx));
+        }
+        break;
+
+      case "choice":
+        if (!this.nagged && now - this.choiceStart > NAG_AFTER_MS) {
+          this.nagged = true;
+          this.onState();
+        }
+        break;
+    }
+  };
+
+  Sim.prototype.start = function () {
+    var self = this;
+    if (this.timer) return;
+    this.timer = setInterval(function () { self.tick(); }, 16);
+  };
+
+  Sim.prototype.stop = function () {
+    clearInterval(this.timer);
+    this.timer = null;
+  };
+
+  /* The switch on the back. Off plays the power-off script first if one is
+     set, which is the whole joke. */
+  Sim.prototype.setPower = function (on, realOff) {
+    if (on === this.powered) return;
+    if (!on && !realOff && this.hauntScript) {
+      this.powered = true;
+      this.activate(this.hauntScript, "haunt");
+      return;
+    }
+    this.powered = on;
+    if (!on) {
+      this.presence = "resting";
+      this.state = "idle";
+      this.setRow(0, ""); this.setRow(1, "");
+      this.setLit(false);
+    } else {
+      this.lastActivity = Date.now();
+      this.loadDefault();
+    }
+    this.onState();
+  };
+
+  global.DeskSim = Sim;
+}(window));
+
+</script>
 <script>
 (function () {
   "use strict";
@@ -1614,12 +2170,29 @@
   }
 
   function renderAll() { renderList(); renderSteps(); }
-  function commit() { saveLocal(); publishLibrary(); renderAll(); }
+  function commit() { saveLocal(); publishLibrary(); renderAll(); simScripts(); }
 
   /* ------------------------------------------------------ transport ---- */
   var client = null;
 
+  /*
+   * Everything the web app says to the device goes through here, which is
+   * what makes testing mode possible: one place to intercept.
+   *
+   * Settings still go to the broker while testing - the relay needs to know
+   * the mode changed, and a topic list or a volume setting is not something
+   * the device performs. It is the performing topics that get diverted.
+   */
+  var DEVICE_TOPICS = null;
+
   function pub(topic, obj, retain) {
+    if (!DEVICE_TOPICS) {
+      DEVICE_TOPICS = [T.cmd, T.def, T.haunt, T.sfx];
+    }
+    if (testMode && DEVICE_TOPICS.indexOf(topic) >= 0) {
+      simReceive(topic, obj);
+      return true;
+    }
     if (!client || !client.connected) { toast("Not connected"); return false; }
     client.publish(topic, JSON.stringify(obj), { qos: 0, retain: !!retain });
     return true;
@@ -1865,6 +2438,104 @@
     selId = lib.scripts.length ? lib.scripts[0].id : null;
     commit();
   });
+  /* ------------------------------------------------ laying text out ----
+   *
+   * The same rules the relay uses on generated dialogue, so a script you
+   * typed and a script he wrote are broken up identically: whole words,
+   * sixteen columns, two rows to a screen, nothing ever dropped.
+   *
+   * A word longer than the display is the one case with no good answer -
+   * it gets cut, because the alternative is losing it.
+   */
+  function layOut(text) {
+    var rows = [];
+    /* A blank line is a deliberate break: it starts a fresh screen rather
+       than flowing on, which is how you get a pause where you wanted one. */
+    text.split(/\n\s*\n/).forEach(function (para, pi) {
+      if (pi && rows.length % 2) rows.push("");   /* finish the half screen */
+      var row = "";
+      para.split(/\s+/).forEach(function (w) {
+        if (!w) return;
+        while (w.length > COLS) {
+          if (row) { rows.push(row); row = ""; }
+          rows.push(w.slice(0, COLS));
+          w = w.slice(COLS);
+        }
+        if (!row) row = w;
+        else if (row.length + 1 + w.length <= COLS) row += " " + w;
+        else { rows.push(row); row = w; }
+      });
+      if (row) rows.push(row);
+    });
+
+    var screens = [];
+    for (var i = 0; i < rows.length; i += 2) {
+      screens.push([rows[i], rows[i + 1] || ""]);
+    }
+    return screens;
+  }
+
+  function showLongCount() {
+    var text = $("longText").value.trim();
+    if (!text) { $("longCount").textContent = "\u00a0"; return; }
+    var n = layOut(text).length;
+    $("longCount").textContent = n + (n === 1 ? " screen" : " screens") +
+      (n > MAX_STEPS ? " \u2014 " + (n - MAX_STEPS) + " will not fit" : "");
+  }
+
+  $("longText").addEventListener("input", showLongCount);
+
+  function splitInto(sc) {
+    var text = $("longText").value.trim();
+    if (!text) { toast("Nothing to lay out"); return false; }
+
+    var screens = layOut(text);
+    var room = MAX_STEPS - sc.steps.length;
+    /* An empty first step is the placeholder a new script starts with. */
+    if (sc.steps.length === 1 && !sc.steps[0].t && !sc.steps[0].b) {
+      sc.steps = [];
+      room = MAX_STEPS;
+    }
+    if (room <= 0) { toast("That script is already full"); return false; }
+
+    var used = screens.slice(0, room);
+    used.forEach(function (r) { sc.steps.push(step(r[0], r[1], 0, 1500)); });
+
+    /* Whatever did not fit stays in the box, so it can go in the next one
+       rather than vanishing. */
+    var left = screens.slice(room);
+    if (left.length) {
+      $("longText").value = left.map(function (r) {
+        return (r[0] + " " + r[1]).trim();
+      }).join(" ");
+      toast("Added " + used.length + "; " + left.length + " left over");
+    } else {
+      $("longText").value = "";
+      toast("Laid out over " + used.length +
+            (used.length === 1 ? " screen" : " screens"));
+    }
+    showLongCount();
+    return true;
+  }
+
+  $("btnSplitAdd").addEventListener("click", function () {
+    var sc = current();
+    if (!sc) { toast("Pick a script first"); return; }
+    if (splitInto(sc)) commit();
+  });
+
+  $("btnSplitNew").addEventListener("click", function () {
+    var text = $("longText").value.trim();
+    if (!text) { toast("Nothing to lay out"); return; }
+    var sc = { id: uid(), loop: false, steps: [],
+               name: text.split(/\s+/).slice(0, 3).join(" ").slice(0, 20) ||
+                     "New script" };
+    lib.scripts.push(sc);
+    selId = sc.id;
+    splitInto(sc);
+    commit();
+  });
+
   $("btnAddStep").addEventListener("click", function () {
     var sc = current(); if (!sc) return;
     if (sc.steps.length >= MAX_STEPS) { toast("24 steps is the device limit"); return; }
@@ -1881,7 +2552,7 @@
 
   // tabs
   function showTab(which) {
-    ["monitor", "scripts", "sounds", "tracking", "care", "learned", "log", "brain"].forEach(function (name) {
+    ["monitor", "scripts", "sounds", "tracking", "care", "learned", "sim", "log", "brain"].forEach(function (name) {
       var on = which === name;
       var cap = name.charAt(0).toUpperCase() + name.slice(1);
       $("tab" + cap).setAttribute("aria-selected", on ? "true" : "false");
@@ -2163,7 +2834,167 @@
   $("tabTracking").addEventListener("click", function () { showTab("tracking"); });
   $("tabCare").addEventListener("click",    function () { showTab("care"); });
   $("tabLearned").addEventListener("click", function () { showTab("learned"); });
+  $("tabSim").addEventListener("click",     function () { showTab("sim"); });
   $("tabLog").addEventListener("click",     function () { showTab("log"); });
+
+  /* --------------------------------------------------- the simulator ----
+   *
+   * The device in a tab, so scripts can be tried without touching the real
+   * one. The engine is in DeskSim above - this is the wiring: the glass,
+   * the two buttons, and the switch that decides who gets the messages.
+   */
+  var testMode = false;
+  try { testMode = localStorage.getItem("floweuy.testmode") === "1"; }
+  catch (e) { testMode = false; }
+
+  function simLog(text, kind) {
+    var host = $("simFeed");
+    var row = document.createElement("div");
+    row.className = "feedrow" + (kind === "hot" ? " hot" : "");
+    var when = document.createElement("span");
+    when.className = "when";
+    when.textContent = new Date().toLocaleTimeString([], {
+      hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    var what = document.createElement("span");
+    what.className = "what";
+    what.textContent = text;
+    row.appendChild(when); row.appendChild(what);
+    host.insertBefore(row, host.firstChild);
+    while (host.childNodes.length > 80) host.removeChild(host.lastChild);
+  }
+
+  var sim = new DeskSim({
+    onDraw: function (d) {
+      $("simR0").textContent = d.r0;
+      $("simR1").textContent = d.r1;
+      var g = $("simGlass");
+      g.className = "simglass" + (d.lit ? "" : " dark") +
+        (d.dread ? " d" + d.dread : "");
+    },
+    onEvent: function (ev) {
+      if (ev.e === "start") {
+        simLog("started \u201c" + ev.scr + "\u201d (" + ev.n + " steps)");
+      } else if (ev.e === "choice") {
+        simLog("answered \u201c" + ev.q + "\u201d with " + ev.pick);
+      } else if (ev.e === "back") {
+        simLog("went back a line");
+      } else if (ev.e === "rest") {
+        simLog("went quiet" + (ev.step >= 0 ? " (resumes at " + ev.step + ")" : ""));
+      } else if (ev.e === "wake") {
+        simLog("woken from " + ev.from);
+      }
+    },
+    onState: function () {
+      var bits = [sim.presence];
+      if (sim.pending) bits.push("notification waiting");
+      if (sim.queued) bits.push("one queued");
+      if (sim.state === "choice") bits.push("asking");
+      if (!sim.powered) bits.push("switched off");
+      $("simState").textContent = bits.join(" \u00b7 ");
+    }
+  });
+  sim.start();
+
+  /* What arrives from the web app, and from the relay while testing. */
+  function simReceive(topic, obj) {
+    if (topic === T.cmd) {
+      sim.command(obj);
+      if (obj.op === "play") simLog("sent: play \u201c" + (obj.script || {}).name + "\u201d");
+      else if (obj.op === "queue") simLog("sent: queued \u201c" + (obj.script || {}).name + "\u201d");
+      else if (obj.op === "notify") simLog("sent: notification \u201c" + (obj.script || {}).name + "\u201d");
+      else if (obj.op === "stop") simLog("sent: stop");
+      else if (obj.op === "vol") simLog("sent: volume (no speaker here)");
+      else if (obj.op === "mute") simLog("sent: mute (no speaker here)");
+      else simLog("sent: " + obj.op);
+    } else if (topic === T.def) {
+      sim.setDefault(obj);
+      simLog("new default: \u201c" + (obj.name || "?") + "\u201d");
+    } else if (topic === T.haunt) {
+      sim.setHaunt(obj);
+      simLog("power-off script set");
+    } else if (topic === T.sfx) {
+      simLog("sound effect (no speaker here)");
+    }
+  }
+
+  $("simBtnA").addEventListener("click", function () { sim.press("a"); });
+  $("simBtnB").addEventListener("click", function () { sim.press("b"); });
+  $("simPower").addEventListener("change", function () {
+    sim.setPower($("simPower").checked, !!relayCfg.realOff);
+  });
+  $("simClear").addEventListener("click", function () {
+    $("simFeed").textContent = "";
+  });
+
+  function simScripts() {
+    var sel = $("simScript");
+    var keep = sel.value;
+    sel.textContent = "";
+    lib.scripts.forEach(function (sc) {
+      var o = document.createElement("option");
+      o.value = sc.id;
+      o.textContent = sc.name || "(unnamed)";
+      sel.appendChild(o);
+    });
+    if (keep) sel.value = keep;
+  }
+
+  function simChosen() {
+    var id = $("simScript").value;
+    for (var i = 0; i < lib.scripts.length; i++) {
+      if (lib.scripts[i].id === id) return wire(lib.scripts[i]);
+    }
+    return null;
+  }
+
+  $("simPlay").addEventListener("click", function () {
+    var sc = simChosen();
+    if (sc) simReceive(T.cmd, { op: "play", script: sc });
+  });
+  $("simNotify").addEventListener("click", function () {
+    var sc = simChosen();
+    if (sc) simReceive(T.cmd, { op: "notify", script: sc });
+  });
+  $("simQueue").addEventListener("click", function () {
+    var sc = simChosen();
+    if (sc) simReceive(T.cmd, { op: "queue", script: sc });
+  });
+  $("simDefault").addEventListener("click", function () {
+    var sc = simChosen();
+    if (sc) simReceive(T.def, sc);
+  });
+  $("simWrite").addEventListener("click", function () {
+    if (!testMode) {
+      toast("Turn testing mode on first");
+      return;
+    }
+    pub(T.gen, { at: Date.now() });
+    simLog("asked the relay for a new script");
+  });
+
+  function showTestMode() {
+    $("cbTestMode").checked = testMode;
+    $("testBar").classList.toggle("on", testMode);
+    try { localStorage.setItem("floweuy.testmode", testMode ? "1" : "0"); }
+    catch (e) {}
+  }
+
+  $("cbTestMode").addEventListener("change", function () {
+    testMode = $("cbTestMode").checked;
+    showTestMode();
+    /* The relay has to know too, or it will carry on publishing scripts at
+       the device behind the web app's back. */
+    relayCfg.testMode = testMode;
+    pushConfig();
+    if (testMode) {
+      simLog("testing mode on - the real one is being left alone", "hot");
+      /* Give it whatever it should already be holding. */
+      if (relayCfg.__lastDefault) sim.setDefault(relayCfg.__lastDefault);
+    } else {
+      simLog("testing mode off - back to the real one", "hot");
+    }
+    toast(testMode ? "Nothing will reach the device" : "Talking to it again");
+  });
 
   /* ---- what he has worked out about them ----
    *
@@ -3415,6 +4246,8 @@
     showIdle();
     renderButtons();
     wireCareLinks();
+    simScripts();
+    showTestMode();
     $("poisonSfx").value = String(relayCfg.poisonSfxSlot || 0);
     $("poisonEvery").value = relayCfg.poisonEveryMin || 10;
     $("cbAiDefault").checked = !!relayCfg.aiDefault;
@@ -3424,6 +4257,10 @@
     $("wakeMessage").value = relayCfg.wakeMessage || "He was woken up!";
     $("cbScary").checked = relayCfg.scaryEnabled !== false;
     $("cbInterview").checked = relayCfg.interview !== false;
+    if (relayCfg.testMode != null && relayCfg.testMode !== testMode) {
+      testMode = !!relayCfg.testMode;
+      showTestMode();
+    }
     renderLessons();
     showWakeSource();
     showScary();
@@ -3693,6 +4530,9 @@
     client.subscribe(T.log, { qos: 1 });
     client.subscribe(T.queue, { qos: 1 });
     client.subscribe(T.profile, { qos: 1 });
+    client.subscribe(T.def, { qos: 1 });
+    /* Where the relay sends things while testing mode is on. */
+    client.subscribe("floweuy/sim/" + ID + "/#", { qos: 0 });
   });
   client.on("reconnect", function () { setStatus("warn", "reconnecting"); });
   client.on("close",     function () { setStatus("warn", "disconnected"); });
@@ -3711,6 +4551,19 @@
     if (topic === T.log) { renderLog(d); return; }
     if (topic === T.queue) { renderQueue(d); return; }
     if (topic === T.profile) { renderProfile(d); renderLessons(); return; }
+    if (topic.indexOf("floweuy/sim/") === 0) {
+      /* The relay diverted this instead of sending it to him. */
+      var real = topic.replace("floweuy/sim/", "floweuy/");
+      simReceive(real, d);
+      return;
+    }
+    if (topic === T.def) {
+      /* Remembered so the simulator can be handed the current default the
+         moment testing mode is switched on. */
+      relayCfg.__lastDefault = d;
+      if (testMode) { sim.setDefault(d); simLog("relay wrote: \u201c" + (d.name || "?") + "\u201d"); }
+      return;
+    }
 
     if (topic === T.tracking) {
       window.__hints = d.hints || window.__hints || [];
