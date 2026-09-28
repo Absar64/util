@@ -461,6 +461,13 @@
         moment it is ready rather than only once you hear it.
       </p>
       <p class="note">
+        Anything marked <strong>written ahead</strong> is his own buffer:
+        scripts already written so that waking him straight after he
+        finishes gives you a new one instead of the last one again. They
+        cannot be removed individually - that would only bring back the
+        repetition.
+      </p>
+      <p class="note">
         <strong>Clear queue</strong> empties this list quietly - nothing is
         sent to him and he carries on with whatever he was doing. Use
         <strong>&#8635;</strong> on the standing script to have a new one
@@ -479,6 +486,12 @@
       <div class="pick" style="margin-top:10px">
         <button id="wakeAi">Something he writes</button>
         <button id="wakeOwn">One of my scripts</button>
+      </div>
+      <div class="barrow" id="wakeAheadRow" style="margin-top:10px">
+        <span class="sect" style="min-width:52px">Ahead</span>
+        <input id="aheadCount" type="number" min="1" max="8"
+               style="width:64px" aria-label="Scripts written in advance">
+        <span class="sect grow">scripts written and waiting</span>
       </div>
       <div class="barrow" id="wakeOwnRow" style="margin-top:10px">
         <span class="sect" style="min-width:52px">Script</span>
@@ -3262,6 +3275,8 @@
     $("wakeAi").classList.toggle("on", ai);
     $("wakeOwn").classList.toggle("on", !ai);
     $("wakeOwnRow").style.display = ai ? "none" : "";
+    $("wakeAheadRow").style.display = ai ? "" : "none";
+    $("aheadCount").value = relayCfg.aheadCount || 3;
     $("wakeNote").textContent = ai
       ? "He writes something new each time he goes quiet - working through " +
         "the things to talk about, then the things to find out."
@@ -3303,6 +3318,14 @@
     $("cbAiDefault").checked = false;
     var sc = pushOwnScript();
     toast(sc ? ("He will play " + sc.name) : "Pick a script");
+  });
+
+  $("aheadCount").addEventListener("change", function () {
+    relayCfg.aheadCount = Math.max(1, Math.min(8,
+      parseInt($("aheadCount").value, 10) || 3));
+    $("aheadCount").value = relayCfg.aheadCount;
+    pushConfig();
+    toast("Keeping " + relayCfg.aheadCount + " written ahead");
   });
 
   $("selCustomDefault2").addEventListener("change", function () {
@@ -3842,7 +3865,7 @@
 
   var QUEUE_TAG = {
     now: "playing now", queued: "queued", notify: "notification",
-    "default": "on waking"
+    "default": "on waking", written: "written ahead"
   };
 
   function renderQueue(q) {
@@ -3876,7 +3899,12 @@
       return;
     }
 
-    $("qCount").textContent = plural(items.length, "script") + " waiting";
+    var ready = q.ready | 0, wanted = q.wanted | 0;
+    $("qCount").textContent = plural(items.length, "script") + " waiting" +
+      (wanted ? "  ·  " + ready + "/" + wanted + " written ahead" : "");
+    /* Running dry is the thing that makes him repeat himself, so it is
+       worth saying out loud rather than leaving it to be inferred. */
+    $("qCount").style.color = (wanted && ready === 0) ? "var(--warn)" : "";
 
     items.forEach(function (it, i) {
       var box = document.createElement("div");
@@ -3900,7 +3928,12 @@
       x.className = "x";
       x.style.cssText = "background:none;border:none;cursor:pointer;" +
         "color:var(--ink-dim);font-size:14px;padding:0 4px;line-height:1";
-      if (it.kind === "default") {
+      if (it.kind === "written") {
+        /* His own buffer. Removing one would only make him repeat himself
+           sooner, which is the problem this exists to solve. */
+        x.textContent = "";
+        x.style.display = "none";
+      } else if (it.kind === "default") {
         /* The standing script is not queued - it is what he falls back to
            - so removing it is meaningless. Replacing it is not. */
         x.textContent = "\u21bb";
@@ -4063,6 +4096,7 @@
     provider: "gemini", model: "", temperature: 1.0, regenerateOnRest: true,
     parameters: [], topics: [],
     careEnabled: true, scaryEnabled: true, interview: true, curriculum: [],
+    aheadCount: 3,
     discordOnWake: false, wakeMessage: "He was woken up!",
     minRegenMinutes: 3, rules: []
   };
