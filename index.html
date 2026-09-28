@@ -450,7 +450,8 @@
       <div class="barrow">
         <span class="sect grow">Coming up</span>
         <span class="tiny" id="qCount"></span>
-        <button id="btnClearQueue" class="tiny danger">Clear queue</button>
+        <button id="btnClearQueue" class="tiny">Clear queue</button>
+        <button id="btnDropHeld" class="tiny danger">Drop what he holds</button>
       </div>
       <div id="queueList"></div>
       <p class="note">
@@ -460,9 +461,16 @@
         moment it is ready rather than only once you hear it.
       </p>
       <p class="note">
-        Removing one clears his waiting slot and sends the rest again, so
-        what you see here and what he is actually holding stay in step. He
-        only ever holds one at a time.
+        <strong>Clear queue</strong> empties this list quietly - nothing is
+        sent to him and he carries on with whatever he was doing. Use
+        <strong>&#8635;</strong> on the standing script to have a new one
+        written instead.
+      </p>
+      <p class="note">
+        He also holds one script of his own, which this list cannot reach.
+        <strong>Drop what he holds</strong> empties that, but the device
+        treats it as &ldquo;go back to the default&rdquo; and starts
+        playing straight away - so it asks first.
       </p>
     </div>
 
@@ -874,6 +882,14 @@
             <button id="simBtnA">Left</button>
             <button id="simBtnB">Right</button>
           </div>
+          <div class="simbtns" style="margin-top:8px">
+            <button id="simBtnX" class="tiny">Both together</button>
+          </div>
+          <p class="note" style="margin-top:8px">
+            These are his actual buttons. Click to tap; hold for about half
+            a second to work the volume, the way you would on the desk.
+            During a question they are the answer and nothing else.
+          </p>
           <div class="simrow">
             <label class="chk"><input type="checkbox" id="simPower" checked>
               Power switch</label>
@@ -1397,6 +1413,70 @@
         this.enterHold();
       }
     }
+  };
+
+  /*
+   * The other two things the real buttons do.
+   *
+   * A tap is only part of it: holding either one works the volume, and
+   * pressing both together fires whatever routine is bound to them. A
+   * simulator that only taps would let a script through that behaves quite
+   * differently under a thumb.
+   */
+  Sim.prototype.hold = function (which) {
+    if (!this.powered) return;
+    this.lastActivity = Date.now();
+    this.vol = Math.max(0, Math.min(100,
+      (this.vol === undefined ? 100 : this.vol) + (which === "b" ? 5 : -5)));
+    this.onEvent({ e: "vol", v: this.vol });
+    this.setRow(0, "Volume");
+    this.setRow(1, ("[" + "#".repeat(Math.round(this.vol / 10)) +
+                    ".".repeat(10 - Math.round(this.vol / 10)) + "] " +
+                    this.vol + "%").slice(0, 16));
+    this.setLit(true);
+    var self = this;
+    clearTimeout(this._volTimer);
+    this._volTimer = setTimeout(function () {
+      if (self.presence === "playing" && self.steps[self.idx]) {
+        self.state = "enter";          /* redraw the line he was on */
+      } else {
+        self.setRow(0, ""); self.setRow(1, "");
+      }
+    }, 900);
+  };
+
+  Sim.prototype.pressBoth = function (routine) {
+    if (!this.powered) return;
+    this.lastActivity = Date.now();
+    /* Never during a question: there the buttons are the answer. */
+    var st = this.steps[this.idx];
+    if (this.state === "choice" && st && st.oa) return;
+    this.onEvent({ e: "btn", which: "X", label: (routine && routine.label) || "" });
+    if (routine && routine.label) this.flashLabel(routine.label);
+  };
+
+  /* A routine's own words, taking the whole display, ending the script -
+     exactly what the firmware does. */
+  Sim.prototype.flashLabel = function (label) {
+    var top = label, bot = "";
+    if (label.length > 16) {
+      var cut = label.lastIndexOf(" ", 16);
+      if (cut <= 0) cut = 16;
+      top = label.slice(0, cut);
+      bot = label.slice(cut).trim();
+    }
+    function centre(t) {
+      t = t.slice(0, 16);
+      var pad = Math.floor((16 - t.length) / 2);
+      return "                ".slice(0, pad) + t;
+    }
+    this.steps = [];
+    this.state = "idle";
+    this.setLit(true);
+    this.setRow(0, centre(top));
+    this.setRow(1, centre(bot));
+    var self = this;
+    setTimeout(function () { self.rest(); }, 2600);
   };
 
   Sim.prototype.stepNext = function (st, idx) {
@@ -2882,6 +2962,10 @@
         simLog("went quiet" + (ev.step >= 0 ? " (resumes at " + ev.step + ")" : ""));
       } else if (ev.e === "wake") {
         simLog("woken from " + ev.from);
+      } else if (ev.e === "vol") {
+        simLog("volume " + ev.v + "% (held a button)");
+      } else if (ev.e === "btn") {
+        simLog("both buttons" + (ev.label ? ": “" + ev.label + "”" : ""));
       }
     },
     onState: function () {
@@ -2917,8 +3001,62 @@
     }
   }
 
-  $("simBtnA").addEventListener("click", function () { sim.press("a"); });
-  $("simBtnB").addEventListener("click", function () { sim.press("b"); });
+  /*
+   * Tap against hold, told apart the way the device does it: the press is
+   * only a tap if the button came back up quickly. Anything longer is the
+   * volume gesture, and must NOT also register as a tap on release.
+   */
+  var HOLD_MS = 450;
+
+  function wireButton(id, which) {
+    var el = $(id), downAt = 0, held = false, timer = null;
+
+    function down() {
+      downAt = Date.now();
+      held = false;
+      timer = setInterval(function () {
+        if (Date.now() - downAt >= HOLD_MS) {
+          held = true;
+          sim.hold(which);
+        }
+      }, 220);
+    }
+    function up() {
+      clearInterval(timer);
+      if (!downAt) return;
+      if (!held) sim.press(which);
+      downAt = 0;
+    }
+
+    el.addEventListener("mousedown", down);
+    el.addEventListener("mouseup", up);
+    el.addEventListener("mouseleave", function () { clearInterval(timer); downAt = 0; });
+    el.addEventListener("touchstart", function (e) { e.preventDefault(); down(); });
+    el.addEventListener("touchend", function (e) { e.preventDefault(); up(); });
+    /* Keyboard: the left and right arrows, because that is what a hand
+       reaches for when the buttons are side by side. */
+    el.addEventListener("keydown", function (e) {
+      if (e.key === " " || e.key === "Enter") { e.preventDefault(); sim.press(which); }
+    });
+  }
+
+  wireButton("simBtnA", "a");
+  wireButton("simBtnB", "b");
+
+  $("simBtnX").addEventListener("click", function () {
+    var r = null;
+    (relayCfg.buttonRoutines || []).forEach(function (o) {
+      if (o.which === "X") r = o;
+    });
+    sim.pressBoth(r);
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if ($("paneSim").hidden) return;
+    if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    if (e.key === "ArrowLeft") { e.preventDefault(); sim.press("a"); }
+    if (e.key === "ArrowRight") { e.preventDefault(); sim.press("b"); }
+  });
   $("simPower").addEventListener("change", function () {
     sim.setPower($("simPower").checked, !!relayCfg.realOff);
   });
@@ -3687,6 +3825,21 @@
     toast("Queue cleared");
   });
 
+  $("btnDropHeld").addEventListener("click", function () {
+    /*
+     * The device holds one script of its own, and the only way to dislodge
+     * it is the firmware's "stop" - which it treats as "go back to the
+     * default", and starts playing. That is worth warning about rather
+     * than surprising somebody with.
+     */
+    if (!confirm("This empties the one script he is holding.\n\n" +
+                 "He will go back to his default script and start playing " +
+                 "it straight away - that is what the device does with " +
+                 "this command. Carry on?")) return;
+    pub(T.cmd, { op: "unqueue", all: true, drop: true });
+    toast("Dropped what he was holding");
+  });
+
   var QUEUE_TAG = {
     now: "playing now", queued: "queued", notify: "notification",
     "default": "on waking"
@@ -3743,22 +3896,29 @@
         (it.when === "on waking" ? "on waking" : "waiting");
       hd.appendChild(pos); hd.appendChild(nm); hd.appendChild(tag);
 
-      /* The standing script is not queued - it is what he falls back to -
-         so there is nothing to remove. Change it above instead. */
-      if (it.kind !== "default") {
-        var x = document.createElement("button");
-        x.className = "x";
-        x.style.cssText = "background:none;border:none;cursor:pointer;" +
-          "color:var(--ink-dim);font-size:13px;padding:0 2px";
+      var x = document.createElement("button");
+      x.className = "x";
+      x.style.cssText = "background:none;border:none;cursor:pointer;" +
+        "color:var(--ink-dim);font-size:14px;padding:0 4px;line-height:1";
+      if (it.kind === "default") {
+        /* The standing script is not queued - it is what he falls back to
+           - so removing it is meaningless. Replacing it is not. */
+        x.textContent = "\u21bb";
+        x.title = "Write a new one to replace this";
+        x.addEventListener("click", function () {
+          pub(T.gen, { at: Date.now() });
+          toast("Writing a new one\u2026");
+        });
+      } else {
         x.textContent = "\u2715";
         x.title = "Take this out of the queue";
         x.addEventListener("click", function () {
           pub(T.cmd, { op: "unqueue", name: it.name });
           box.style.opacity = ".3";
-          toast("Removed");
+          toast("Removed from the queue");
         });
-        hd.appendChild(x);
       }
+      hd.appendChild(x);
       box.appendChild(hd);
 
       if (it.screens && it.screens.length) {
