@@ -550,7 +550,7 @@
         <button id="btnSplitNew" class="primary">Make a new script</button>
       </div>
       <p class="note">
-        Line breaks start a new screen; everything else flows. Twenty-four
+        Line breaks start a new screen; everything else flows. Forty-eight
         screens is his limit, so anything past that is left in the box for
         a second script rather than silently dropped.
       </p>
@@ -1747,7 +1747,10 @@
     queue:   "floweuy/" + ID + "/queue",
     profile: "floweuy/" + ID + "/profile"
   };
-  var COLS = 16, MAX_STEPS = 24, OPT_MAX = 8;
+  /* MAX_STEPS must match MAX_RSTEPS in the firmware and MAX_STEPS in
+     the relay. All three cut a script; only the firmware cuts it
+     silently. */
+  var COLS = 16, MAX_STEPS = 48, OPT_MAX = 8;
   var LS_KEY = "floweuy.library.v1";
 
   var DREAD_NAMES = ["Calm", "Scary", "More scary", "Most scary"];
@@ -2563,7 +2566,7 @@
   /*
    * Nothing from a file is trusted.
    *
-   * The device takes 24 steps of 16 columns and will silently cut anything
+   * The device takes 48 steps of 16 columns and will silently cut anything
    * longer, which is a confusing way to find out a file was malformed. So
    * everything is clamped here, where it can be counted and reported.
    */
@@ -2775,7 +2778,7 @@
 
   $("btnAddStep").addEventListener("click", function () {
     var sc = current(); if (!sc) return;
-    if (sc.steps.length >= MAX_STEPS) { toast("24 steps is the device limit"); return; }
+    if (sc.steps.length >= MAX_STEPS) { toast(MAX_STEPS + " steps is the device limit"); return; }
     sc.steps.push(step("", "", 0, 1500)); commit();
   });
   $("scriptName").addEventListener("input", function () {
