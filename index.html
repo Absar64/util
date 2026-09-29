@@ -463,9 +463,8 @@
       <p class="note">
         Anything marked <strong>written ahead</strong> is his own buffer:
         scripts already written so that waking him straight after he
-        finishes gives you a new one instead of the last one again. They
-        cannot be removed individually - that would only bring back the
-        repetition.
+        finishes gives you a new one instead of the last one again.
+        Removing one is fine - another gets written to replace it.
       </p>
       <p class="note">
         <strong>Clear queue</strong> empties this list quietly - nothing is
@@ -3928,12 +3927,7 @@
       x.className = "x";
       x.style.cssText = "background:none;border:none;cursor:pointer;" +
         "color:var(--ink-dim);font-size:14px;padding:0 4px;line-height:1";
-      if (it.kind === "written") {
-        /* His own buffer. Removing one would only make him repeat himself
-           sooner, which is the problem this exists to solve. */
-        x.textContent = "";
-        x.style.display = "none";
-      } else if (it.kind === "default") {
+      if (it.kind === "default") {
         /* The standing script is not queued - it is what he falls back to
            - so removing it is meaningless. Replacing it is not. */
         x.textContent = "\u21bb";
