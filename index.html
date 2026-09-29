@@ -929,9 +929,19 @@
             dread flickers the backlight first, the right button skips to
             the end of a line and the left button repeats the one before.
           </p>
+          <div class="barrow">
+            <label class="chk"><input type="checkbox" id="cbSoundHere">
+              Play sounds in this browser</label>
+          </div>
           <p class="note">
-            Not simulated: sound. There is no speaker here, so blips, music
-            and effects are listed in the feed rather than played.
+            Plays the samples that were sent to him - mono, 22050Hz, 8-bit -
+            rather than the file they came from, so you hear what the slot
+            actually holds. Typing blips are synthesised the way he makes
+            them, rising with dread.
+          </p>
+          <p class="note">
+            Still not simulated: the music bed. Nothing here is ever sent to
+            the device.
           </p>
           <div class="barrow">
             <span class="sect grow">What happened</span>
@@ -1209,6 +1219,8 @@
     this.onDraw = opts.onDraw || function () {};
     this.onEvent = opts.onEvent || function () {};
     this.onState = opts.onState || function () {};
+    /* Called per visible character, as the device blips while it types. */
+    this.onBlip = opts.onBlip || null;
 
     this.rows = ["", ""];
     this.lit = false;
@@ -1595,6 +1607,7 @@
           var t = st.t || "";
           if (this.charPos < t.length && this.charPos < COLS) {
             this.setChar(0, this.charPos, t[this.charPos]);
+            if (t[this.charPos] !== " " && this.onBlip) this.onBlip(st.d || 0);
             this.charPos++;
           } else if (st.oa) {
             this.showChoice(st);
@@ -1612,6 +1625,7 @@
           var b = st.b || "";
           if (this.charPos < b.length && this.charPos < COLS) {
             this.setChar(1, this.charPos, b[this.charPos]);
+            if (b[this.charPos] !== " " && this.onBlip) this.onBlip(st.d || 0);
             this.charPos++;
           } else {
             this.enterHold();
@@ -1801,6 +1815,90 @@
     });
   }
 
+  /* ------------------------------------------------ hearing it here ----
+   *
+   * Plays the bytes that were sent to the device, not the file they came
+   * from: mono, 22050Hz, unsigned 8-bit, after normalising and resampling.
+   * That is the point - hearing the original MP3 tells you nothing about
+   * whether the clip survives being squeezed into a slot, and the squeeze
+   * is where clips usually go wrong.
+   *
+   * Nothing here touches the device. It is a listen, not a command.
+   */
+  var localAudio = null;
+
+  function audioCtx() {
+    if (!localAudio) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      localAudio = new AC();
+    }
+    /* Browsers start suspended until a click; every caller is one. */
+    if (localAudio.state === "suspended") {
+      try { localAudio.resume(); } catch (e) {}
+    }
+    return localAudio;
+  }
+
+  function playPcmHere(bytes, level) {
+    var ctx = audioCtx();
+    if (!ctx || !bytes || !bytes.length) return false;
+    var buf = ctx.createBuffer(1, bytes.length, SFX_RATE);
+    var ch = buf.getChannelData(0);
+    for (var i = 0; i < bytes.length; i++) {
+      /* unsigned 8-bit back to -1..1, the inverse of what was sent */
+      ch[i] = (bytes[i] - 128) / 127.5;
+    }
+    var src = ctx.createBufferSource();
+    src.buffer = buf;
+    var gain = ctx.createGain();
+    /* Match what he would actually play it at, so a clip that is too quiet
+       on the desk is too quiet here too. */
+    gain.gain.value = Math.max(0, Math.min(1, level === undefined ? 0.9 : level));
+    src.connect(gain).connect(ctx.destination);
+    src.start();
+    return true;
+  }
+
+  function b64decode(str) {
+    var bin = atob(str);
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  function playSlotHere(slot) {
+    var clip = sfxLib[slot];
+    if (!clip || !clip.b64) { toast("That slot is empty"); return false; }
+    var lvl = relayCfg.sfxLevel;
+    if (lvl === undefined || lvl === null) lvl = 0.9;
+    return playPcmHere(b64decode(clip.b64), lvl);
+  }
+
+  /*
+   * The typing blip. Not a sample - the device synthesises it - so this
+   * synthesises one too: a short square-ish tone that climbs with dread,
+   * which is what makes an angry line sound different from a calm one.
+   */
+  function blipHere(dread) {
+    if (!soundHere) return;
+    var ctx = audioCtx();
+    if (!ctx) return;
+    var osc = ctx.createOscillator();
+    var g = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = [520, 640, 760, 900][Math.min(3, dread | 0)];
+    g.gain.value = 0.035;
+    g.gain.exponentialRampToValueAtTime(0.0008, ctx.currentTime + 0.035);
+    osc.connect(g).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.04);
+  }
+
+  var soundHere = false;
+  try { soundHere = localStorage.getItem("floweuy.soundhere") === "1"; }
+  catch (e) { soundHere = false; }
+
   function firstFreeSlot() {
     for (var i = 0; i < SFX_SLOTS; i++) if (!sfxLib[i]) return i;
     return -1;
@@ -1866,6 +1964,10 @@
         nm.textContent = (i + 1) + ". " + (clip ? clip.name : "empty");
         row.appendChild(nm);
         if (clip) {
+          row.appendChild(mkBtn("\u266a", "Hear it here - nothing is sent",
+            function () {
+              if (playSlotHere(i)) toast("Playing here: " + clip.name);
+            }));
           row.appendChild(mkBtn("\u25b6", "Play on the device", function () {
             if (pub(T.sfx, { op: "play", slot: i })) toast("Playing " + clip.name);
           }));
@@ -2956,6 +3058,7 @@
   }
 
   var sim = new DeskSim({
+    onBlip: function (dread) { blipHere(dread); },
     onDraw: function (d) {
       $("simR0").textContent = d.r0;
       $("simR1").textContent = d.r1;
@@ -3009,7 +3112,14 @@
       sim.setHaunt(obj);
       simLog("power-off script set");
     } else if (topic === T.sfx) {
-      simLog("sound effect (no speaker here)");
+      var slot = obj.slot;
+      var clip = (slot != null && slot >= 0) ? sfxLib[slot] : null;
+      if (obj.op === "play" && soundHere && clip && playSlotHere(slot)) {
+        simLog("sound: " + clip.name);
+      } else {
+        simLog("sound effect slot " + ((slot | 0) + 1) +
+               (soundHere ? " (that slot is empty)" : " (sound is off here)"));
+      }
     }
   }
 
@@ -3072,6 +3182,17 @@
   $("simPower").addEventListener("change", function () {
     sim.setPower($("simPower").checked, !!relayCfg.realOff);
   });
+  $("cbSoundHere").addEventListener("change", function () {
+    soundHere = $("cbSoundHere").checked;
+    try { localStorage.setItem("floweuy.soundhere", soundHere ? "1" : "0"); }
+    catch (e) {}
+    if (soundHere) {
+      audioCtx();                 /* this click is what unlocks audio */
+      blipHere(0);
+    }
+    toast(soundHere ? "You will hear him" : "Muted here");
+  });
+
   $("simClear").addEventListener("click", function () {
     $("simFeed").textContent = "";
   });
@@ -4434,6 +4555,7 @@
     showIdle();
     renderButtons();
     wireCareLinks();
+    $("cbSoundHere").checked = soundHere;
     simScripts();
     showTestMode();
     $("poisonSfx").value = String(relayCfg.poisonSfxSlot || 0);
