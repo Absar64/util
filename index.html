@@ -341,6 +341,11 @@
           animation: spin .8s linear infinite; vertical-align: -1px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  .drop { border: 1px dashed var(--edge); border-radius: 10px;
+          padding: 14px; display: flex; gap: 10px; align-items: center;
+          flex-wrap: wrap; transition: border-color .15s, background .15s; }
+  .drop.over { border-color: var(--lcd-on); background: #101c12; }
+
   textarea { width: 100%; background: var(--panel); color: var(--ink);
              border: 1px solid var(--edge); border-radius: 8px;
              padding: 9px 10px; font-family: inherit; font-size: 12px;
@@ -634,17 +639,27 @@
     <div class="card" style="margin-top:16px">
       <span class="sect">Add a sound</span>
       <div class="barrow">
-        <input id="sfxUrl" class="grow" placeholder="https://.../sound.mp3" aria-label="Sound URL">
+        <input id="sfxUrl" class="grow" placeholder="Paste a link to a sound"
+               aria-label="Sound URL">
         <button id="btnFetch">Fetch</button>
       </div>
-      <div class="barrow">
-        <label class="chk" for="sfxFile">or pick a file:</label>
-        <input type="file" id="sfxFile" accept="audio/*" class="grow">
+      <div class="drop" id="sfxDrop">
+        <button id="btnPick" class="primary">Choose a file</button>
+        <span class="sect">or drop one here, or paste it</span>
+        <!--
+          No "accept" on purpose. iOS decides what to grey out from the
+          file's declared type, and plenty of perfectly good MP3s arrive
+          with a type it does not recognise - so the picker refused to let
+          them be chosen at all. Better to accept anything and say
+          honestly if it cannot be decoded.
+        -->
+        <input type="file" id="sfxFile" style="display:none">
       </div>
       <p class="note" id="sfxNote">
-        The browser decodes the audio and sends raw samples to the device, so
-        the ESP32 never has to fetch or decode anything. Four slots, about
-        1.5 seconds each.
+        Any sound your browser can play - MP3, WAV, M4A, OGG, FLAC, or a
+        video file, which it will take the audio from. It is decoded here
+        and sent as raw samples, so the device never has to fetch or decode
+        anything. Four slots, about 1.5 seconds each; longer clips are cut.
       </p>
     </div>
 
@@ -1776,10 +1791,39 @@
    * device already mixes: mono, 22050Hz, unsigned 8-bit. Doing it here means
    * playback on the ESP32 is a plain array read.
    */
+  /*
+   * Decode, by whichever route this browser supports.
+   *
+   * Safari on iOS is the awkward one: it only has the old callback form of
+   * decodeAudioData, and its AudioContext starts suspended until something
+   * is clicked - a context created during an async callback after a fetch
+   * is not "during a gesture" as far as it is concerned, and decoding into
+   * it fails with no useful error. So the context is made once, on a real
+   * click, and reused.
+   */
+  function decodeAnything(arrayBuf) {
+    var ctx = audioCtx();
+    if (!ctx) return Promise.reject(new Error("no audio support in this browser"));
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      var ok = function (b) { if (!settled) { settled = true; resolve(b); } };
+      var no = function (e) {
+        if (!settled) {
+          settled = true;
+          reject(e || new Error("the browser could not decode it"));
+        }
+      };
+      var r;
+      try {
+        r = ctx.decodeAudioData(arrayBuf, ok, no);
+      } catch (e) { no(e); return; }
+      /* Newer browsers return a promise as well as calling back. */
+      if (r && typeof r.then === "function") r.then(ok, no);
+    });
+  }
+
   function toDevicePcm(arrayBuf) {
-    var AC = window.AudioContext || window.webkitAudioContext;
-    var ctx = new AC();
-    return ctx.decodeAudioData(arrayBuf).then(function (buf) {
+    return decodeAnything(arrayBuf).then(function (buf) {
       var chans = [];
       for (var c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c));
       var ratio = buf.sampleRate / SFX_RATE;
@@ -1810,7 +1854,6 @@
         if (v2 > 1) v2 = 1; else if (v2 < -1) v2 = -1;
         out[j] = Math.round((v2 * 0.5 + 0.5) * 255);
       }
-      try { ctx.close(); } catch (e) {}
       return { pcm: out, seconds: outLen / SFX_RATE, truncated: full > SFX_MAX };
     });
   }
@@ -4774,29 +4817,113 @@
   /* ---- sound sources: a URL, or a file off this device ---- */
   $("btnFetch").addEventListener("click", function () {
     var url = $("sfxUrl").value.trim();
-    if (!url) { toast("Paste a URL first"); return; }
+    if (!url) { toast("Paste a link first"); return; }
+    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+    audioCtx();                 /* unlock audio while the click is live */
     var name = decodeURIComponent(url.split("/").pop().split("?")[0]) || "clip";
-    $("sfxNote").textContent = "Fetching " + name + "...";
+    $("sfxNote").textContent = "Fetching " + name + "…";
+
+    /*
+     * Try it directly, then ask the relay to do it.
+     *
+     * Almost no site allows another page to read its files, so the direct
+     * attempt usually fails - but when it works it is quicker and needs
+     * nothing running at home. The relay has no such restriction, so it is
+     * the fallback rather than the first move.
+     */
+    function viaRelay() {
+      var base = publicBase();
+      if (!base) return Promise.reject(new Error("no relay address set"));
+      $("sfxNote").textContent = "Asking the relay to fetch it…";
+      return fetch(base + "/fetchaudio?url=" + encodeURIComponent(url),
+                   { credentials: "include" })
+        .then(function (r) {
+          if (!r.ok) throw new Error("the relay said HTTP " + r.status);
+          return r.arrayBuffer();
+        });
+    }
+
     fetch(url).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.arrayBuffer();
-    }).then(function (buf) {
+    })["catch"](viaRelay).then(function (buf) {
       addClip(name.replace(/\.[a-z0-9]+$/i, ""), buf);
     })["catch"](function (e) {
-      // Almost always CORS: the server has to allow cross-origin reads.
-      $("sfxNote").textContent = "Could not fetch that URL (" + (e.message || e) +
-        "). If it is a CORS block, download the file and use the picker below.";
+      /*
+       * Nearly always CORS. The browser will not say so outright - it
+       * reports a generic network failure - so the message has to explain
+       * the likely cause rather than repeat the useless one.
+       */
+      $("sfxNote").textContent =
+        "Could not fetch that link, directly or through the relay (" +
+        (e.message || e) + "). Most sites do not let other pages read their " +
+        "files; the relay gets round that, but it has to be running and " +
+        "reachable. Saving the file and choosing it below always works.";
     });
   });
 
-  $("sfxFile").addEventListener("change", function () {
-    var f = $("sfxFile").files && $("sfxFile").files[0];
+  function readFile(f) {
+    /* Blob.arrayBuffer is missing on older iOS, where FileReader is not. */
+    if (f.arrayBuffer) return f.arrayBuffer();
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve(fr.result); };
+      fr.onerror = function () { reject(fr.error || new Error("could not read it")); };
+      fr.readAsArrayBuffer(f);
+    });
+  }
+
+  function takeFile(f) {
     if (!f) return;
-    f.arrayBuffer().then(function (buf) {
-      addClip(f.name.replace(/\.[a-z0-9]+$/i, ""), buf);
+    audioCtx();                 /* unlock audio while a gesture is live */
+    var name = (f.name || "clip").replace(/\.[a-z0-9]+$/i, "");
+    $("sfxNote").textContent = "Reading " + (f.name || "that file") + "\u2026";
+    readFile(f).then(function (buf) {
+      addClip(name, buf);
     })["catch"](function (e) {
       $("sfxNote").textContent = "Could not read that file: " + (e.message || e);
     });
+  }
+
+  $("btnPick").addEventListener("click", function () {
+    audioCtx();                 /* this click is the gesture iOS wants */
+    $("sfxFile").click();
+  });
+
+  $("sfxFile").addEventListener("change", function (ev) {
+    takeFile(ev.target.files && ev.target.files[0]);
+    ev.target.value = "";       /* so the same file can be chosen twice */
+  });
+
+  /* Dropping and pasting, because on a desktop they are what you reach for
+     first and a file picker is what you fall back to. */
+  var drop = $("sfxDrop");
+  ["dragenter", "dragover"].forEach(function (n) {
+    drop.addEventListener(n, function (e) {
+      e.preventDefault();
+      drop.classList.add("over");
+    });
+  });
+  ["dragleave", "drop"].forEach(function (n) {
+    drop.addEventListener(n, function (e) {
+      e.preventDefault();
+      drop.classList.remove("over");
+    });
+  });
+  drop.addEventListener("drop", function (e) {
+    var dt = e.dataTransfer;
+    if (dt && dt.files && dt.files.length) takeFile(dt.files[0]);
+  });
+
+  document.addEventListener("paste", function (e) {
+    if ($("paneSounds").hidden) return;
+    var items = (e.clipboardData || {}).items || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].kind === "file") {
+        takeFile(items[i].getAsFile());
+        return;
+      }
+    }
   });
 
   /* ---------------------------------------------------------- boot ----- */
