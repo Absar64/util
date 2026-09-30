@@ -457,6 +457,7 @@
         <span class="tiny" id="qCount"></span>
         <button id="btnClearQueue" class="tiny">Clear queue</button>
         <button id="btnDropHeld" class="tiny danger">Drop what he holds</button>
+        <button id="btnUnclog" class="tiny primary">Unstick him</button>
       </div>
       <div id="queueList"></div>
       <p class="note">
@@ -464,6 +465,14 @@
         marked ON WAKING is the standing script - it is what he plays when
         nothing else is queued, and a freshly written one appears here the
         moment it is ready rather than only once you hear it.
+      </p>
+      <p class="note">
+        <strong>Unstick him</strong> is the one to press when he is
+        repeating himself, the log has gone quiet, or nothing you send
+        arrives. It reconnects to the broker, throws away whatever it
+        thought he was holding, and puts a fresh script in front of him.
+        Safe to press at any time - the most it costs is one script nobody
+        had heard yet.
       </p>
       <p class="note">
         Anything marked <strong>written ahead</strong> is his own buffer:
@@ -4012,6 +4021,46 @@
   $("btnClearQueue").addEventListener("click", function () {
     pub(T.cmd, { op: "unqueue", all: true });
     toast("Queue cleared");
+  });
+
+  $("btnUnclog").addEventListener("click", function () {
+    var btn = $("btnUnclog");
+    btn.disabled = true;
+    btn.textContent = "Unsticking…";
+
+    function done(how) {
+      btn.disabled = false;
+      btn.textContent = "Unstick him";
+      toast(how);
+    }
+
+    /*
+     * Over HTTP first, then MQTT.
+     *
+     * The usual jam is the broker connection itself, and asking the broker
+     * to fix the broker does not work. HTTP reaches the relay directly, so
+     * it is the one that works when it matters - but it is unavailable
+     * from a page served over HTTPS, so MQTT is the fallback rather than
+     * the other way round.
+     */
+    var base = publicBase();
+    var viaHttp = base
+      ? fetch(base + "/unclog", { method: "POST", credentials: "include" })
+          .then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          })
+      : Promise.reject(new Error("no relay address set"));
+
+    viaHttp.then(function (d) {
+      done("Unstuck: " + ((d.did || []).slice(-1)[0] || "done"));
+    })["catch"](function () {
+      if (pub(T.cmd, { op: "unclog" })) {
+        done("Asked over the broker - watch the log");
+      } else {
+        done("Could not reach the relay either way");
+      }
+    });
   });
 
   $("btnDropHeld").addEventListener("click", function () {
